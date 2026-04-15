@@ -1,8 +1,9 @@
-import {asyncHandler} from "../utils/asyncHandler.js"
-import {ApiError} from "../utils/apiError.js";
+import { asyncHandler } from "../utils/asyncHandler.js"
+import { ApiError } from "../utils/apiError.js";
 import { User } from "../models/user.model.js";
-import {uploadOnCloudinary} from "../utils/cloudinary.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
+import fs from "fs";
 
 const registerUser = asyncHandler(async (req, res) => {
   // Get user details from frontend
@@ -16,49 +17,59 @@ const registerUser = asyncHandler(async (req, res) => {
   // return response 
 
   // Get User Details
-  const {fullName, username, password, email, avatar} = req.body
-  console.log("Email: ",email);
-  console.log("Password: ",password);
-  console.log("Avatar: ",avatar);
+  const { fullName, username, password, email, avatar, coverImage } = req.body
+  // console.log("Email: ",email);
+  // console.log("Password: ",password);
+  // console.log("Avatar: ",avatar);
 
   //Validation of details
-  if( [fullName, username, password, email, avatar].some((item)=> item === "") ){
+  if ([fullName, username, password, email, avatar].some((item) => item === "")) {
     throw new ApiError(400, "Required fields can't be empty.")
   }
-  // if(!fullName.contains(" ")) throw new ApiError(400, "Full Name is required.");
-  // if(!email.contains("@")) throw new ApiError(400, "Invalid emali.");
+
+  if (!fullName.trim().includes(" ")) {
+    throw new ApiError(400, "Please enter full name (first and last name)")
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    throw new ApiError(400, "Invalid email format")
+  }
 
   //Checking User already exists or not
   const isExists = await User.findOne({
-    $or:[
+    $or: [
       { username },
       { email }
     ]
   })
 
-  if(isExists) throw new ApiError(409, "Username or Email already exists.");
+  if (isExists) throw new ApiError(409, "Username or Email already exists.");
 
   // Checking for images , Checking for avatar
-      // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
-      // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
-  const avatarLocalPath = req.files?.avatar[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage[0]?.path;
+  // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
+  // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
+  const avatarLocalPath = req.files?.avatar?.[0]?.path;
+  const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
   //checking required image file avatar
-  if(!avatarLocalPath) throw new ApiError(400, "Avatar image is required.");
+  if (!avatarLocalPath) {
+    if (coverImageLocalPath) fs.unlinkSync(coverImageLocalPath) //If avatar image is not present then remove the cover image from local storage if it is present
+    throw new ApiError(400, "Avatar image is required.")
+  }
+
 
   // Upload to cloudinary
   const avatarImage = await uploadOnCloudinary(avatarLocalPath);
-  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+  const coverImages = await uploadOnCloudinary(coverImageLocalPath);
   //Checking requird fild avatar
-  if(!avatarImage) throw new ApiError(400, "Avatar file is empty.");
+  if (!avatarImage) throw new ApiError(400, "Avatar file is empty.");
 
   // Create User Object
-  const user =  await User.create({
+  const user = await User.create({
     username: username.toLowerCase(),
     email,
     fullName,
     avatar: avatarImage.url,
-    coverImage: coverImage?.url || "",
+    coverImage: coverImages?.url || "",
     password,
   })
 
@@ -66,10 +77,10 @@ const registerUser = asyncHandler(async (req, res) => {
   const createdUser = await User.findById(user._id).select(" -password -refreshToken");
 
   // Check user creation | Checking the entry is successfully registered in DB or not
-  if(!createdUser) throw new ApiError(500, "User Registration Faild.");
+  if (!createdUser) throw new ApiError(500, "User Registration Faild.");
 
-  return res.status(201).json(new ApiResponse( 200, createdUser, "User Registration Successfull.", ))
+  return res.status(201).json(new ApiResponse(200, createdUser, "User Registration Successfull.",))
 
 })
 
-export {registerUser};
+export { registerUser };
