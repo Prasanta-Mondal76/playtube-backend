@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js"
 import { ApiError } from "../utils/apiError.js";
 import { User } from "../models/user.model.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from "jsonwebtoken";
 
@@ -308,6 +308,7 @@ const getCurrentUser = asyncHandler( async(req, res) => {
             ))
 })
 
+
 // Update fullName & email info
 const updateData = asyncHandler (async (req, res) => {
   const {fullName, email} = req.body;
@@ -336,6 +337,51 @@ const updateData = asyncHandler (async (req, res) => {
             ))
 })
 
+
+// File update utility
+const updateFiles = async (file, id) => {
+  
+  console.log("File ==> ",file);
+
+  const localFilePath = file?.path;
+  const updateFieldName = file?.fieldname;
+
+  if(!localFilePath) throw new ApiError(400, "File is missing.")
+  
+  const uploadedFile = await uploadOnCloudinary(localFilePath)
+
+  if(!uploadedFile.url) throw new ApiError(400, "Error in uploading process.")
+
+    console.log("Fild Name: ",updateFieldName)
+
+  const user = await User.findById(id).select("-password -refreshToken")
+
+  if(!user) throw new ApiError(400, "User not found in update file Process.")
+
+  const oldUrl = user[updateFieldName];
+
+  user[updateFieldName] = uploadedFile.url
+  await user.save({validateBeforeSave: false})
+  
+  await deleteFromCloudinary(oldUrl);
+  return user;
+}
+
+// Update Avatar
+const updateAvatar = asyncHandler ( async (req, res) => {
+  const resObj = await  updateFiles(req.file, req.user._id);
+
+  res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
+})
+
+// Update Covered Image
+const updateCoverImage = asyncHandler ( async (req, res) => {
+  const resObj = await updateFiles(req.file, req.user._id);
+
+  res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
+})
+
+
 export 
 { 
   registerUser, 
@@ -344,5 +390,8 @@ export
   renewAccessRefreshToken, 
   changeCurrentPassword, 
   getCurrentUser,
-  updateData 
+  updateData,
+  updateAvatar,
+  updateCoverImage,
+
 };
