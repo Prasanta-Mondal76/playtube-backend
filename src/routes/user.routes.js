@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { registerUser, loginUser, logoutUser, renewAccessRefreshToken } from "../controller/user.controler.js";
+import { registerUser, loginUser, logoutUser, renewAccessRefreshToken, changeCurrentPassword, getCurrentUser, updateData } from "../controller/user.controler.js";
 
 import {upload} from "../middlewares/multer.middleware.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -28,4 +28,11 @@ router.route("/logout").post(verifyJWT, logoutUser)
 
 // Endpoint for generating new Access and RefreshToken
 router.route("/refresh-token").post(renewAccessRefreshToken)
+
+// Change password
+router.route("/change-password").post(verifyJWT, changeCurrentPassword)
+
+router.route("/current-user").post(verifyJWT, getCurrentUser)
+router.route("/update-user").post(verifyJWT, updateData)
+
 export default router;
