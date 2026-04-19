@@ -5,6 +5,35 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from "jsonwebtoken";
 
+
+const checkNameAndEmailFormat = async (fullName, email) =>{
+  const trimFullName = fullName?.trim()
+  const trimEmail = email?.trim()
+  if (trimFullName) {
+    if (!trimFullName.includes(" ")) {
+      throw new ApiError(400, "Please enter full name (first and last name)")
+    }
+  }
+  if (trimEmail) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimEmail)) {
+      throw new ApiError(400, "Invalid email format")
+    }
+    if(trimEmail !== trimEmail.toLowerCase()) throw new ApiError(400, "Email must be in lowercase")
+
+    const isUnique = await User.findOne({email: trimEmail})
+    if(isUnique) throw new ApiError(409, "Email already exists.")
+  }
+  return {trimFullName, trimEmail};
+}
+
+const passwordValidation = (pass, len) => {
+  // const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])\S{8,}$/;
+  const regex = new RegExp(`^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])\S{${len},}$`)
+  if(!regex.test(regex)) throw new ApiError(400, `Password must be >=${len} and contains upparcase. lowercase, numbers and spetial characters.`)
+  return;
+}
+
 // Register User 
 const registerUser = asyncHandler(async (req, res) => {
   // Get user details from frontend
@@ -28,13 +57,11 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Required fields can't be empty.")
   }
 
-  if (!fullName.trim().includes(" ")) {
-    throw new ApiError(400, "Please enter full name (first and last name)")
-  }
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    throw new ApiError(400, "Invalid email format")
-  }
+  // fullName and email validation
+  const {trimFullName, trimEmail} =  await checkNameAndEmailFormat(fullName, email);
+
+  // Strong Password Validation
+  passwordValidation(password);
 
   //Checking User already exists or not
   const isExists = await User.findOne({
@@ -66,9 +93,9 @@ const registerUser = asyncHandler(async (req, res) => {
 
   // Create User Object
   const user = await User.create({
-    username: username.toLowerCase(),
-    email,
-    fullName,
+    username: username.trim().toLowerCase(),
+    email : trimEmail,
+    fullName : trimFullName,
     avatar: avatarImage.url,
     coverImage: coverImages?.url || "",
     password,
@@ -151,7 +178,7 @@ const loginUser = asyncHandler(async (req, res) => {
   delete loggedInUser.password;
   delete loggedInUser.refreshToken;
 
-
+console.log("User ",loggedInUser.username," Login Successfull.")
   // Return response (accessToken and user details except user password and refreshToken details)
   return res.status(200)
     .cookie("accessToken", accessToken, options)
@@ -236,4 +263,86 @@ const renewAccessRefreshToken = asyncHandler(async (req, res) => {
   }
 
 });
-export { registerUser, loginUser, logoutUser, renewAccessRefreshToken };
+
+
+// Change Password
+const changeCurrentPassword = asyncHandler ( async (req, res) => {
+  console.log("Change Password res.body => ",req.body);
+
+  const {oldPassword, newPassword} = req.body;
+
+  if(!oldPassword || !newPassword) throw new ApiError(400, "Password fields required");
+
+  if(oldPassword === newPassword) throw new ApiError(400, "Unchanged Password.")
+
+  console.log("Verify user details:(without password and refreshtoken) ",req.user);
+
+  // Strong passworc validation
+  passwordValidation(newPassword);
+
+  const currentUser = await User.findById(req.user._id);
+
+  const isPassCorrect = await currentUser.isPasswordCorrect(oldPassword);
+
+  if(!isPassCorrect) throw new ApiError(400, "Incorrect Password.")
+
+  currentUser.password = newPassword;
+  await currentUser.save({validateBeforeSave: false});
+console.log("User ",currentUser.username, " Password changed form ",oldPassword," to ",newPassword)
+  res.status(200)
+      .json(new ApiResponse(
+        200,
+        {},
+        "Password Updated Successfully."
+      ))
+})
+
+
+// Get current user details function 
+const getCurrentUser = asyncHandler( async(req, res) => {
+  return res.status(200)
+            .json(new ApiResponse(
+              200,
+              req.user,
+              "Current user fatched Successfully."
+            ))
+})
+
+// Update fullName & email info
+const updateData = asyncHandler (async (req, res) => {
+  const {fullName, email} = req.body;
+  
+  if(!(fullName || email)) throw new ApiError(400, "Please provide at least one field to update");
+
+  const user = await User.findById(req.user._id)
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const {trimFullName, trimEmail} = await checkNameAndEmailFormat(fullName, email);
+
+  user.fullName = trimFullName? trimFullName : user.fullName
+  user.email = trimEmail? trimEmail : user.email
+  await user.save({validateBeforeSave: false})
+
+
+  console.log("Info updated.")
+  return res.status(200)
+            .json(new ApiResponse(
+              200,
+              user,
+              "Details Update Successfully."
+            ))
+})
+
+export 
+{ 
+  registerUser, 
+  loginUser, 
+  logoutUser, 
+  renewAccessRefreshToken, 
+  changeCurrentPassword, 
+  getCurrentUser,
+  updateData 
+};
