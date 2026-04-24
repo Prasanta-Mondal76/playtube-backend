@@ -4,6 +4,7 @@ import { User } from "../models/user.model.js";
 import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 
 const checkNameAndEmailFormat = async (fullName, email) =>{
@@ -455,6 +456,64 @@ const getUserChannelDetails = asyncHandler( async(req, res) => {
 })
 
 
+// Watch history function. To find watch hintory uer must be login. And if user login we get the user details in req.user[auth.middleware]
+const getWatchHistory = asyncHandler ( async( req, res) =>{
+
+  const user  = await User.aggregate([
+    {
+      $match:{
+        // Convert req.user._id to ObjectId because MongoDB stores _id as ObjectId, not as a string. But when we write "req.user._id" it gives a string, Not the ObjetId().
+        //For normal case we just send the req.user._id and mongooes internally convert in into ObjectId type. But in aggregation pipeline we need to send the exact format
+        //So, If you simply write  _id : req.user._id; It missmatch the type.
+        
+        _id : new mongoose.Types.ObjectId(req.user._id) // This ensures proper matching inside the aggregation pipeline and avoids type mismatch issues. 
+      }
+    },
+    {
+      $lookup:{
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        // Nested Lookup to find video owner details because this models(User, Video) are interconnected. 
+        pipeline:[
+          {
+            $lookup:{
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline:[
+                {
+                  $project:{
+                    username: 1,
+                    fullName: 1,
+                    avatar: 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            $addFields:{
+              owner:{
+                $first: "$owner"
+              }
+            }
+          }
+        ]
+      },
+    }
+  ])
+
+  return res.status(200)
+            .json(new ApiResponse(
+              200,
+              user[0].watchHistory,
+              "Watch History Fatched Successfully."
+            ))
+})
+
 export 
 { 
   registerUser, 
@@ -466,5 +525,6 @@ export
   updateData,
   updateAvatar,
   updateCoverImage,
-  getUserChannelDetails
+  getUserChannelDetails,
+  getWatchHistory,
 };
