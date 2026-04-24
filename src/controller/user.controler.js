@@ -384,7 +384,8 @@ const updateCoverImage = asyncHandler ( async (req, res) => {
 
 // User channel details 
 const getUserChannelDetails = asyncHandler( async(req, res) => {
-  const {username} = req.prams;
+  console.log("User Channel Req: => ", req.params)
+  const {username} = req.params;
 
   if(!username?.length) throw new ApiError(404, "Username Not FOund.")
 
@@ -443,14 +444,14 @@ const getUserChannelDetails = asyncHandler( async(req, res) => {
     }
   ])
 
-  if(!user) throw new ApiError(404, "User doesn't exists.")
+  if(!user?.length) throw new ApiError(404, "User doesn't exists.")
 
-  console.log("User '",user.fullName,"' Details: ",user);
+  console.log("User '",user[0].username,"' Details: ",user);
 
-  return req.status(200)
+  return res.status(200)
             .json(new ApiResponse(
               200,
-              user,
+              user[0],
               "User Details Fatched Successfully."
             ))
 })
