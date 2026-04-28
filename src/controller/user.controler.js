@@ -7,9 +7,10 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import crypto from "crypto";
 import { sendMail } from "../utils/sendMail.js";
+import { deleteLocalTempFiles } from "../utils/deleteTempFiles.js"
 
 
-const checkNameAndEmailFormat = async (fullName, email) => {
+const checkNameAndEmailFormat =  (fullName, email) => {
   const trimFullName = fullName?.trim()
   const trimEmail = email?.trim()
   if (trimFullName) {
@@ -24,8 +25,6 @@ const checkNameAndEmailFormat = async (fullName, email) => {
     }
     if (trimEmail !== trimEmail.toLowerCase()) throw new ApiError(400, "Email must be in lowercase")
 
-    const isUnique = await User.findOne({ email: trimEmail })
-    if (isUnique) throw new ApiError(409, "Email already exists.")
   }
   return { trimFullName, trimEmail };
 }
@@ -39,78 +38,90 @@ const passwordValidation = (pass, len = 8) => {
 
 // Register User 
 const registerUser = asyncHandler(async (req, res) => {
-  // Get user details from frontend
-  // Validation of details | All details are correct or not, email format, any required fild is empty or not
-  // Check is user already exsts ? by there unique identity like: username, email.
-  // Check for images , Check for avatar (It's a required field)
-  // If images are present, upload them to cloudinary 
-  // Create user Object - create entry in db
-  // remove password and refresh token field from response
-  // check for user creation 
-  // return response 
-
-  // Get User Details
-  const { fullName, username, password, email, avatar, coverImage } = req.body
-  // console.log("Email: ",email);
-  // console.log("Password: ",password);
-  // console.log("Avatar: ",avatar);
-
-  //Validation of details
-  if ([fullName, username, password, email, avatar].some((item) => item === "")) {
-    throw new ApiError(400, "Required fields can't be empty.")
+  try {
+    // Get user details from frontend
+    // Validation of details | All details are correct or not, email format, any required fild is empty or not
+    // Check is user already exsts ? by there unique identity like: username, email.
+    // Check for images , Check for avatar (It's a required field)
+    // If images are present, upload them to cloudinary 
+    // Create user Object - create entry in db
+    // remove password and refresh token field from response
+    // check for user creation 
+    // return response 
+  
+    // Get User Details
+    const { fullName, username, password, email, avatar, coverImage } = req.body
+    // console.log("Email: ",email);
+    // console.log("Password: ",password);
+    // console.log("Avatar: ",avatar);
+  
+    //Validation of details
+    if ([fullName, username, password, email, avatar].some((item) => item === "")) {
+      throw new ApiError(400, "Required fields can't be empty.")
+    }
+  
+    // fullName and email validation
+    const { trimFullName, trimEmail } =  checkNameAndEmailFormat(fullName, email);
+  
+    // Strong Password Validation. Second perameter is the minimum length of the password
+    passwordValidation(password, 6);
+  
+    //Checking User already exists or not
+    const isExists = await User.findOne({
+      $or: [
+        { username },
+        { email }
+      ]
+    })
+  
+    
+    // Checking for images , Checking for avatar
+    // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
+    // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
+    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+  
+    // If email or username exists remove the files from local storge.
+    if (isExists) {
+      fs.unlinkSync(avatarLocalPath)
+      fs.unlinkSync(coverImageLocalPath)
+      throw new ApiError(409, "Username or Email already exists. Please login.");
+    }
+  
+    //checking required image file avatar
+    if (!avatarLocalPath) {
+      deleteLocalTempFiles(req) //If avatar image is not present then remove all files from temp.
+      throw new ApiError(400, "Avatar image is required.")
+    }
+  
+  
+    // Upload to cloudinary
+    const avatarImage = await uploadOnCloudinary(avatarLocalPath);
+    const coverImages = await uploadOnCloudinary(coverImageLocalPath);
+    //Checking requird fild avatar
+    if (!avatarImage) throw new ApiError(400, "Avatar file is empty.");
+  
+    // Create User Object
+    const user = await User.create({
+      username: username.trim().toLowerCase(),
+      email: trimEmail,
+      fullName: trimFullName,
+      avatar: avatarImage.url,
+      coverImage: coverImages?.url || "",
+      password,
+    })
+  
+    // Removed Password and RefreshToken field | User.findById(user._id) it find the user with the _id which db automatically add. ".select()" select all fields of user. "-password -refreshToken" means except this 2 select all others field.
+    const createdUser = await User.findById(user._id).select(" -password -refreshToken");
+  
+    // Check user creation | Checking the entry is successfully registered in DB or not
+    if (!createdUser) throw new ApiError(500, "User Registration Faild.");
+  
+    return res.status(201).json(new ApiResponse(200, createdUser, "User Registration Successfull.",))
+  } catch (error) {
+    deleteLocalTempFiles(req);
+    throw new ApiError(error.statusCode, error.message)
   }
-
-  // fullName and email validation
-  const { trimFullName, trimEmail } = await checkNameAndEmailFormat(fullName, email);
-
-  // Strong Password Validation. Second perameter is the minimum length of the password
-  passwordValidation(password, 6);
-
-  //Checking User already exists or not
-  const isExists = await User.findOne({
-    $or: [
-      { username },
-      { email }
-    ]
-  })
-
-  if (isExists) throw new ApiError(409, "Username or Email already exists. Please login.");
-
-  // Checking for images , Checking for avatar
-  // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
-  // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
-  const avatarLocalPath = req.files?.avatar?.[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
-  //checking required image file avatar
-  if (!avatarLocalPath) {
-    if (coverImageLocalPath) fs.unlinkSync(coverImageLocalPath) //If avatar image is not present then remove the cover image from local storage if it is present
-    throw new ApiError(400, "Avatar image is required.")
-  }
-
-
-  // Upload to cloudinary
-  const avatarImage = await uploadOnCloudinary(avatarLocalPath);
-  const coverImages = await uploadOnCloudinary(coverImageLocalPath);
-  //Checking requird fild avatar
-  if (!avatarImage) throw new ApiError(400, "Avatar file is empty.");
-
-  // Create User Object
-  const user = await User.create({
-    username: username.trim().toLowerCase(),
-    email: trimEmail,
-    fullName: trimFullName,
-    avatar: avatarImage.url,
-    coverImage: coverImages?.url || "",
-    password,
-  })
-
-  // Removed Password and RefreshToken field | User.findById(user._id) it find the user with the _id which db automatically add. ".select()" select all fields of user. "-password -refreshToken" means except this 2 select all others field.
-  const createdUser = await User.findById(user._id).select(" -password -refreshToken");
-
-  // Check user creation | Checking the entry is successfully registered in DB or not
-  if (!createdUser) throw new ApiError(500, "User Registration Faild.");
-
-  return res.status(201).json(new ApiResponse(200, createdUser, "User Registration Successfull.",))
 
 })
 
@@ -372,16 +383,26 @@ const updateFiles = async (file, id) => {
 
 // Update Avatar
 const updateAvatar = asyncHandler(async (req, res) => {
-  const resObj = await updateFiles(req.file, req.user._id);
-
-  res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
+  try {
+    const resObj = await updateFiles(req.file, req.user._id);
+  
+    res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
+  } catch (error) {
+    deleteLocalTempFiles(req);
+    throw new ApiError(error.statusCode, error.message);
+  }
 })
 
 // Update Covered Image
 const updateCoverImage = asyncHandler(async (req, res) => {
-  const resObj = await updateFiles(req.file, req.user._id);
-
-  res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
+  try {
+    const resObj = await updateFiles(req.file, req.user._id);
+  
+    res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
+  } catch (error) {
+    deleteLocalTempFiles(req);
+    throw new ApiError(error.statusCode, error.message);
+  }
 })
 
 // User channel details 
