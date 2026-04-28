@@ -1,5 +1,6 @@
 import { v2 as cloudinary } from 'cloudinary';
 import fs from "fs"
+import { ApiError } from './apiError';
 
 
 cloudinary.config({
@@ -22,7 +23,7 @@ const uploadOnCloudinary = async (localFilePath) => {
     
   } catch (error) {
     fs.unlinkSync(localFilePath)//If file upload on cloudinary faild then removed the file from our local storage
-    return null;
+    throw new ApiError(500, `File upload failed. Error: ${error.message}`);
   }
 }
 
