@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { verifyJWT } from "../middlewares/auth.middleware.js"
 
-import { publishAVideo } from "../controller/video.controler.js"
+import 
+{ 
+  publishAVideo,
+  getAllVideos
+} from "../controller/video.controler.js"
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router()
@@ -21,5 +25,10 @@ router.route("/publish-video")
   ]),
   publishAVideo
 )
+
+
+router.route("/all-videos").get(getAllVideos)
+
+
 
 export default router;
