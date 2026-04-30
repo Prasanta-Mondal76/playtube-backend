@@ -4,7 +4,8 @@ import { verifyJWT } from "../middlewares/auth.middleware.js"
 import 
 { 
   publishAVideo,
-  getAllVideos
+  getAllVideos,
+  updateVideoDetails
 } from "../controller/video.controler.js"
 import { upload } from "../middlewares/multer.middleware.js";
 
@@ -28,7 +29,7 @@ router.route("/publish-video")
 
 
 router.route("/all-videos").get(getAllVideos)
-
+router.route("/update-video-details/:videoId").patch(verifyJWT, updateVideoDetails)
 
 
 export default router;

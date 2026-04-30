@@ -145,10 +145,43 @@ const getAllVideos = asyncHandler(async (req, res) => {
 });
 
 
+const updateVideoDetails = asyncHandler(async (req, res) => {
+  const { videoId } = req.params
+  //TODO: update video details like title, description, thumbnail
+  if (!videoId) throw new ApiError(400, "No VideoId Provided. ")
+  const { thumbnail, title, description } = req.body
 
+  const updateFields = {};
+
+  if (thumbnail !== undefined && (thumbnail !== "")) updateFields.thumbnail = thumbnail;
+  if (title !== undefined && (title !== "")) updateFields.title = title;
+  if (description !== undefined && (description !== "")) updateFields.description = description;
+
+  if (Object.keys(updateFields).length === 0) {
+    throw new ApiError(400, "No fields provided for update");
+  }
+
+  const video = await Video.findByIdAndUpdate(
+    {
+      _id: videoId,
+      owner: req.user._id,
+    },
+    {
+      $set: updateFields
+    },
+    {
+      after: true,
+    }
+  );
+
+  if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
+
+  return res.status(200).json(new ApiResponse(200, video, "Video Details Updated Successfully."))
+})
 
 
 export {
   publishAVideo,
   getAllVideos,
+  updateVideoDetails,
 }
