@@ -29,10 +29,12 @@ import tweetRouter from "./routes/tweet.routes.js"
 import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
 import subscriptionRouter from "./routes/subscription.routes.js"
+// Redis code run
+import redis from "./db/redis.js"
 
 
 // Router declaration for user route
-app.use("/api/v1/users", userRoute);
+app.use("/api/v1/users", userRouter);
 
 // Router declaration for video route
 app.use("/api/v1/videos", videoRouter);
@@ -53,5 +55,17 @@ app.use("/api/v1/likes", likeRouter);
 app.use("/api/v1/subscriptions", subscriptionRouter);
 
 
+
+
+// Periodic update using node-corn 
+import cron from "node-cron"
+import { syncViewsToMongoDB } from "./utils/index.js"
+
+cron.schedule("*/90 * * * * *", async () => {
+
+  console.log("Running views sync cron...")
+
+  await syncViewsToMongoDB()
+})
 
 export default app;

@@ -1,6 +1,8 @@
 import { ApiError, ApiResponse, asyncHandler, uploadOnCloudinary, deleteLocalTempFiles } from "../utils/index.js"
 import { Video } from "../models/video.model.js";
-import mongoose from "mongoose";
+import mongoose, { isValidObjectId } from "mongoose";
+import redisClient from "../db/redis.js";
+
 
 
 const publishAVideo = asyncHandler(async (req, res) => {
@@ -33,7 +35,8 @@ const publishAVideo = asyncHandler(async (req, res) => {
       description,
       duration,
       views: 0,
-      isPublished: isPublished ?? true
+      isPublished: isPublished ?? true,
+      owner: req.user?._id
     })
 
 
@@ -220,11 +223,11 @@ const getVideoById = asyncHandler(async (req, res) => {
 
   const video = await Video.findOne({
     _id: videoId,
-    $or:[
-      { isPublished : true },
-      
+    $or: [
+      { isPublished: true },
+
       // Video owner can access of his own unpublished videos also.
-      { owner: req.user?._id}
+      { owner: req.user?._id }
     ]
   })
   if (!video) throw new ApiError(404, "Video Not Found.")
@@ -232,11 +235,96 @@ const getVideoById = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, video, "Video fatched successfully."))
 })
 
+// Views Count Method using Redis
+const recordVideoView = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  if (!isValidObjectId(videoId)) throw new ApiError(400, "Invalid video ID")
+
+  // Create Unique Key
+  const uniqueViewerKey = req.user?._id
+    ? `viewed:${videoId}:${req.user._id}`
+    : `viewed:${videoId}:${req.ip}`
+
+  // If key not exists, create it and return OK. Otherwise: return null
+  const isNewView = await redisClient.set(
+    uniqueViewerKey,
+    "true",
+    {
+      EX: 86400,
+      NX: true
+    }
+  )
+
+  // If Already Viewed
+  if (!isNewView) {
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        null,
+        "View already counted"
+      )
+    )
+  }
+
+  const viewsKey = `video:${videoId}:views`
+
+  // Check Redis views exists or not
+  const redisViewsExists = await redisClient.exists(viewsKey)
+
+  // If Redis lost data / first time load
+  if (!redisViewsExists) {
+
+    const video = await Video.findById(videoId).select("views")
+    if (!video) {
+      await redisClient.del(uniqueViewerKey)
+      throw new ApiError(404, "Video not found")
+    }
+
+    // Warm Redis cache using MongoDB value
+    await redisClient.set(
+      viewsKey,
+      video?.views || 0
+    )
+  }
+
+  // Increment views
+  await redisClient.incr(viewsKey)
+
+  await Promise.all([
+    // Set a timer of 7 days for this key
+    redisClient.expire(viewsKey, 604800),
+
+    // Mark video as changed
+    redisClient.sAdd("dirty:videos", videoId),
+
+  ])
+
+  return res.status(200).json(new ApiResponse(
+    200,
+    null,
+    "Views recorded successfully"
+  ))
+})
+
+const getVideoViewCount = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  if (!isValidObjectId(videoId)) throw new ApiError(400, "Invalid video ID")
+
+  const views = Number(await redisClient.get(`video:${videoId}:views`)) || 0
+  return res.status(200).json(new ApiResponse(
+    200,
+    { totalViews: views },
+    "Total views fetched successfully."
+  ))
+
+})
 export {
   publishAVideo,
   getAllVideos,
   updateVideoDetails,
   togglePublishStatus,
   deleteVideo,
-  getVideoById
+  getVideoById,
+  recordVideoView,
+  getVideoViewCount
 }
