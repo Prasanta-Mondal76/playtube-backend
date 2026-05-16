@@ -9,6 +9,7 @@ import redisClient from "../db/redis.js";
 import { User } from "../models/user.model.js";
 import { Like } from "../models/like.model.js";
 import { Comment } from "../models/comment.model.js";
+import { Playlist } from "../models/playlist.model.js";
 
 
 
@@ -266,17 +267,19 @@ const deleteVideo = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession()
   try {
     session.startTransaction()
+    // Video Finding 
     const video = await Video.findOneAndDelete({
       _id: videoId,
       owner: req.user._id
     }).session(session)
     if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
 
+    // Fetching all comments of the video. Only return "_id".
     const comments = await Comment.find(
       { video: videoId },
       "_id",
       { session }
-    )
+    ).lean()
     // make a array of comments by takins it's  _id
     const commentIds = comments.map(c => c._id)
 
@@ -303,6 +306,15 @@ const deleteVideo = asyncHandler(async (req, res) => {
       Like.deleteMany({
         comment: { $in: commentIds }
       }, { session }),
+
+      // Delete video from all playlist
+      Playlist.updateMany(
+        { videos: videoId},
+        {
+          $pull:{ videos: videoId}
+        },
+        { session }
+      )
     ])
 
     await session.commitTransaction()

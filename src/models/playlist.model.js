@@ -3,7 +3,10 @@ import mongoose from "mongoose"
 const playlistSchema = new mongoose.Schema({
   name: {
     type: String,
-    require: true,
+    required: true,
+    trim: true,
+    minlength: 1,
+    maxlength: 500
   },
 
   description: {
@@ -19,7 +22,8 @@ const playlistSchema = new mongoose.Schema({
 
   owner: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User"
+    ref: "User",
+    required: true,
   },
 
 }, { timestamps: true })

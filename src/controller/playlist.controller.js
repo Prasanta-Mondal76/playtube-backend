@@ -9,7 +9,7 @@ const createPlaylist = asyncHandler(async (req, res) => {
   if (!name?.trim()) throw new ApiError(400, "Playlist Name is required.")
 
   const playlist = await Playlist.create({
-    name: name.trim(),
+    name,
     description: description?.trim() || "",
     owner: req.user._id
   })

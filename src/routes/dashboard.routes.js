@@ -1,9 +1,9 @@
 import { Router } from "express"
-import { verifyJWT } from "../middlewares/auth.middleware"
+import { verifyJWT } from "../middlewares/auth.middleware.js"
 import {
   getChannelStats,
   getChannelVideos,
-} from "../controller/dashboard.controller"
+} from "../controller/dashboard.controller.js"
 
 
 const router = Router()
