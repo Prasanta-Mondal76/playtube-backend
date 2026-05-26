@@ -64,13 +64,20 @@ app.use("/api/v1/healthCheck", healthCheckRouter);
 
 // Periodic update using node-corn 
 import cron from "node-cron"
-import { syncViewsToMongoDB } from "./utils/index.js"
+import { syncViewsToMongoDB, cleanupTempFiles } from "./utils/index.js"
 
-cron.schedule("*/5 * * * *", async () => {
+// Views Sync
+cron.schedule("*/90 * * * *", async () => {
 
   console.log("Running views sync cron...")
 
   await syncViewsToMongoDB()
+})
+
+// 
+cron.schedule("*/30 * * * *", async () => {
+  cleanupTempFiles()
+  console.log("Temp Clean Up")
 })
 
 export default app;

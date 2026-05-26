@@ -10,6 +10,9 @@ import {
   resetLinkMail,
   accountDeletionConfirmMail,
   accountDeletionSuccessMail,
+  storeRegistrationData,
+  verifyOtp,
+  otpMail,
 
 } from "../utils/index.js"
 import { User } from "../models/user.model.js";
@@ -22,8 +25,6 @@ import { Comment } from "../models/comment.model.js";
 import { Like } from "../models/like.model.js";
 import { Playlist } from "../models/playlist.model.js";
 import { Subscription } from "../models/subscription.model.js"
-
-
 
 const checkNameAndEmailFormat = (fullName, email) => {
   const trimFullName = fullName?.trim()
@@ -51,23 +52,29 @@ const storngPasswordValidation = (pass, len = 6) => {
   return;
 }
 
-// Register User 
-const registerUser = asyncHandler(async (req, res) => {
-  let avatarImage
-  let coverImage
-  try {
-    // Get user details from frontend
-    // Validation of details | All details are correct or not, email format, any required fild is empty or not
-    // Check is user already exsts ? by there unique identity like: username, email.
-    // Check for images , Check for avatar (It's a required field)
-    // If images are present, upload them to cloudinary 
-    // Create user Object - create entry in db
-    // remove password and refresh token field from response
-    // check for user creation 
-    // return response 
+// Register User | 2 step process.
 
+// Get user details from frontend
+// Validation of details | All details are correct or not, email format, any required fild is empty or not
+// Check is user already exsts ? by there unique identity like: username, email.
+// Check for images , Check for avatar (It's a required field)
+// Store data in Redis, Send OTP to user
+// In next completeRegistration , verify user.
+// If verified user then upload files on cloudinary. 
+// Create user Object - create entry in db
+// remove password and refresh token field from response
+// check for user creation 
+// return response  
+const initiateRegistration = asyncHandler(async (req, res) => {
+  try {
     // Get User Details
     const { fullName, username, password, email } = req.body
+
+    // Set a Colldown period using redis key.
+    const cooldownKey = `reg:cooldown:${email}`
+    const cooldownExists = await redisClient.exists(cooldownKey)
+    if (cooldownExists) throw new ApiError(429, "Please wait for 5 minute before requesting again");
+    await redisClient.set(cooldownKey, "1", { EX: 299 })
     // console.log("Email: ",email);
     // console.log("Password: ",password);
     // console.log("Avatar: ",avatar);
@@ -102,61 +109,91 @@ const registerUser = asyncHandler(async (req, res) => {
       ]
     })
 
-
-
     // If email or username exists remove the files from local storge.
     if (isExists) {
-      deleteLocalTempFiles(req)
-      throw new ApiError(409, "Username or Email already exists. Please login.");
+      throw new ApiError(409, "User already exists with this email or username.");
     }
 
-    // Upload to cloudinary
-    avatarImage = await uploadOnCloudinary(avatarLocalPath);
-    coverImage = await uploadOnCloudinary(coverImageLocalPath);
-    //Checking requird fild avatar
-    if (!avatarImage) throw new ApiError(400, "Avatar file is empty.");
-
-    // Create User Object
-    const user = await User.create({
+    const otp = await storeRegistrationData(trimEmail, {
       username: username.trim().toLowerCase(),
       email: trimEmail,
       fullName: trimFullName,
+      avatarLocalPath,
+      coverImageLocalPath,
+      password,
+    });
+
+    // OTP mail bhejo
+    await sendMail({
+      to: trimEmail,
+      subject: "Verify Your Email — PlayTube",
+      html: otpMail(trimFullName, otp),
+    });
+
+    return res.status(200).json(new ApiResponse(
+      200,
+      { email: trimEmail },
+      "OTP sent to your email. Valid for 5 minutes."
+    ))
+  } catch (error) {
+    deleteLocalTempFiles(req)
+    throw new ApiError(error.statusCode || 500, error.message || "Something went wrong.")
+  }
+})
+
+const verifyOtpAndRegister = asyncHandler(async (req, res) => {
+  let avatarImage;
+  let coverImage;
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) throw new ApiError(400, "Email and OTP are required.");
+
+    // Fetch data from redis
+    const registrationData = await verifyOtp(email, otp);
+
+    // If user verified then upload fiels on cloudinary
+    avatarImage = await uploadOnCloudinary(registrationData.avatarLocalPath);
+    if (!avatarImage) throw new ApiError(400, "Avatar upload failed.");
+    coverImage = await uploadOnCloudinary(registrationData.coverImageLocalPath);
+
+    // Create user
+    const user = await User.create({
+      username: registrationData.username,
+      email: registrationData.email,
+      fullName: registrationData.fullName,
       avatar: avatarImage.url,
       coverImage: coverImage?.url || "",
-      password,
-    })
+      password: registrationData.password,
+    });
 
-    // Convert mongoose document to plain object
-    const createdUser = user?.toObject()
-    // Removed Password and RefreshToken field 
-    delete createdUser.password
-    delete createdUser.refreshToken
+    // Create response data except password and refresh token
+    const createdUser = user.toObject();
+    delete createdUser.password;
+    delete createdUser.refreshToken;
 
-    // Send a success mail
+    // Send Success email 
     await sendMail({
       to: createdUser.email,
-      subject: "Registration Successfull",
+      subject: "Registration Successful",
       html: registrationSuccessMail(
         createdUser.fullName,
         createdUser.username,
         createdUser.email
-      )
-    })
+      ),
+    });
 
-    return res.status(201).json(new ApiResponse(201, createdUser, "User Registration Successfull.",))
+    return res.status(201).json(
+      new ApiResponse(201, createdUser, "User Registration Successful.")
+    );
+
   } catch (error) {
-    deleteLocalTempFiles(req); // If anything goes wrong , remove temp files.
-    if (avatarImage?.url) await deleteFromCloudinary(avatarImage.url)
-    if (coverImage?.url) await deleteFromCloudinary(coverImage.url)
-    if (error.code === 11000) {
-      throw new ApiError(409, "Username or Email already exists.")
-    }
+    if (avatarImage?.url) await deleteFromCloudinary(avatarImage.url);
+    if (coverImage?.url) await deleteFromCloudinary(coverImage.url);
     throw new ApiError(
       error.statusCode || 500,
       error.message || "Something went wrong"
     );
   }
-
 })
 
 
@@ -332,7 +369,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
   currentUser.password = newPassword;
   await currentUser.save({ validateBeforeSave: false });
-  
+
   res.status(200)
     .json(new ApiResponse(
       200,
@@ -811,7 +848,9 @@ const confirmDeleteAccount = asyncHandler(async (req, res) => {
 });
 
 export {
-  registerUser,
+  initiateRegistration,
+  verifyOtpAndRegister,
+
   loginUser,
   logoutUser,
   renewAccessRefreshToken,

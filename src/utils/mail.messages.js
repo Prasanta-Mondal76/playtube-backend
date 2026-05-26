@@ -234,3 +234,138 @@ export const accountDeletionSuccessMail = (
     </div>
   `;
 };
+
+
+export const otpMail = (fullName, otp) => {
+  return `
+    <div style="
+      font-family: Arial, sans-serif;
+      background-color: #f3f4f6;
+      padding: 20px;
+    ">
+      <div style="
+        max-width: 600px;
+        margin: auto;
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      ">
+
+        <!-- Header -->
+        <div style="
+          background-color: #111827;
+          padding: 24px;
+          text-align: center;
+        ">
+          <h1 style="
+            color: #ffffff;
+            margin: 0;
+            font-size: 28px;
+          ">
+            PlayTube
+          </h1>
+        </div>
+
+        <!-- Body -->
+        <div style="
+          padding: 35px 20px;
+        ">
+
+          <h2 style="
+            margin-top: 0;
+            color: #111827;
+            font-size: 24px;
+          ">
+            Verify Your Email 📧
+          </h2>
+
+          <p style="
+            font-size: 16px;
+            color: #374151;
+            line-height: 1.8;
+          ">
+            Hi <strong>${fullName}</strong>,
+          </p>
+
+          <p style="
+            font-size: 16px;
+            color: #374151;
+            line-height: 1.8;
+          ">
+            Use the OTP below to complete your PlayTube registration.
+          </p>
+
+          <!-- OTP Box -->
+          <div style="
+            text-align: center;
+            margin: 30px 0;
+          ">
+            <div style="
+              display: inline-block;
+              background-color: #111827;
+              color: #ffffff;
+              font-size: clamp(24px, 6vw, 38px);
+              font-weight: bold;
+              letter-spacing: clamp(4px, 1vw, 12px);
+              padding: 16px 24px;
+              border-radius: 10px;
+              max-width: 100%;
+              box-sizing: border-box;
+              word-break: break-word;
+            ">
+              ${otp}
+            </div>
+          </div>
+
+          <!-- Warning Box -->
+          <div style="
+            background-color: #FEF2F2;
+            border-left: 4px solid #DC2626;
+            padding: 16px;
+            margin: 25px 0;
+            border-radius: 6px;
+          ">
+            <p style="
+              margin: 0;
+              color: #991B1B;
+              font-size: 15px;
+              line-height: 1.6;
+            ">
+              This OTP will expire in <strong>5 minutes</strong>. 
+              Do not share it with anyone.
+            </p>
+          </div>
+
+          <p style="
+            margin-top: 30px;
+            font-size: 14px;
+            color: #6B7280;
+            line-height: 1.7;
+          ">
+            If you did not create a PlayTube account, 
+            you can safely ignore this email.
+          </p>
+
+        </div>
+
+        <!-- Footer -->
+        <div style="
+          background-color: #F9FAFB;
+          padding: 20px;
+          text-align: center;
+          border-top: 1px solid #E5E7EB;
+        ">
+          <p style="
+            margin: 0;
+            font-size: 14px;
+            color: #6B7280;
+          ">
+            © ${new Date().getFullYear()} PlayTube. All rights reserved.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  `;
+};

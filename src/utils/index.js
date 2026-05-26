@@ -6,12 +6,17 @@ import { sendMail } from "./sendMail.js";
 import { deleteLocalTempFiles } from "./deleteTempFiles.js";
 import syncViewsToMongoDB from "./viewSync.corn.js"
 import { syncAVideoViewsToMongoDB } from "./syncSingleVideoViews.js"
-import { 
+import { generateOtp, storeRegistrationData, verifyOtp } from "./otpGenerator.js"
+import {
   registrationSuccessMail,
   resetLinkMail,
   accountDeletionConfirmMail,
   accountDeletionSuccessMail,
+  otpMail,
 } from "./mail.messages.js"
+import { cleanupTempFiles } from "./cleanupTempFiles.js"
+
+
 export {
   ApiError,
   ApiResponse,
@@ -23,9 +28,16 @@ export {
   resetLinkMail,
   accountDeletionConfirmMail,
   accountDeletionSuccessMail,
+  otpMail,
 
-  
+
   deleteLocalTempFiles,
   syncViewsToMongoDB,
-  syncAVideoViewsToMongoDB
+  syncAVideoViewsToMongoDB,
+
+  generateOtp,
+  storeRegistrationData,
+  verifyOtp,
+
+  cleanupTempFiles,
 }

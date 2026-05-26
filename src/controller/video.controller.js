@@ -138,7 +138,45 @@ const getAllVideos = asyncHandler(async (req, res) => {
   }
 
   // Step 2: DB call
-  const videos = await Video.find(query)
+  const videos = await Video.aggregate([
+    { $match: query },
+    {
+      $lookup: {
+        from: "users",
+
+        let: {
+          ownerId: "$owner"
+        },
+
+        pipeline: [
+
+          {
+            $match: {
+              $expr: {
+                $eq: ["$_id", "$$ownerId"]
+              }
+            }
+          },
+
+          // Fetch ONLY required fields
+          {
+            $project: {
+              avatar: 1,
+              username: 1
+            }
+          }
+
+        ],
+
+        as: "owner"
+      }
+    },
+
+    {
+      $unwind: "$owner"
+    }
+
+  ])
     .sort({ [sortBy]: sortOrder, _id: sortOrder })
     .limit(limit);
 
@@ -453,7 +491,7 @@ const recordVideoView = asyncHandler(async (req, res) => {
 const getChannelVideos = asyncHandler(async (req, res) => {
   let { limit = 30, sortBy = "_id", sortType = "desc", lastValue, lastId } = req.query;
   let { channelId } = req.params
-  if(!isValidObjectId(channelId)) throw new ApiError(400, "Invalid Channel Id.")
+  if (!isValidObjectId(channelId)) throw new ApiError(400, "Invalid Channel Id.")
 
   limit = parseInt(limit);
   const sortOrder = sortType === "asc" ? 1 : -1;
@@ -484,33 +522,33 @@ const getChannelVideos = asyncHandler(async (req, res) => {
 
 
   let query = {};
-  if(req.user?._id?.equals(channelId)) {
+  if (req.user?._id?.equals(channelId)) {
     query.owner = req.user._id
   }
-  else{
+  else {
     query.owner = channelId
     query.isPublished = true
   }
 
   if (sortBy === "_id") {
-      // Sirf _id pe sort — simple cursor, $or ki zaroorat nahi
-      if (parsedLastId) {
-        query = { _id: sortOrder === 1 ? { $gt: parsedLastId } : { $lt: parsedLastId } };
-      }
-    } else {
-      //  parsedLastId ke saath lastValue DONO check karo
-      if (lastValue !== undefined && lastValue !== null && parsedLastId) {
-        query = {
-          $or: [
-            { [sortBy]: sortOrder === 1 ? { $gt: lastValue } : { $lt: lastValue } },
-            {
-              [sortBy]: lastValue,
-              _id: sortOrder === 1 ? { $gt: parsedLastId } : { $lt: parsedLastId }
-            }
-          ]
-        };
-      }
+    // Sirf _id pe sort — simple cursor, $or ki zaroorat nahi
+    if (parsedLastId) {
+      query = { _id: sortOrder === 1 ? { $gt: parsedLastId } : { $lt: parsedLastId } };
     }
+  } else {
+    //  parsedLastId ke saath lastValue DONO check karo
+    if (lastValue !== undefined && lastValue !== null && parsedLastId) {
+      query = {
+        $or: [
+          { [sortBy]: sortOrder === 1 ? { $gt: lastValue } : { $lt: lastValue } },
+          {
+            [sortBy]: lastValue,
+            _id: sortOrder === 1 ? { $gt: parsedLastId } : { $lt: parsedLastId }
+          }
+        ]
+      };
+    }
+  }
 
   // Step 2: DB call
   const videos = await Video.find(query)

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
-registerUser,
+initiateRegistration,
+verifyOtpAndRegister,
 loginUser,
 logoutUser,
 renewAccessRefreshToken,
@@ -23,7 +24,8 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-router.route("/register").post(
+// Register User | 2 Step Process
+router.route("/initiate-registration").post(
   upload.fields([
     {
       name: "avatar",
@@ -34,8 +36,10 @@ router.route("/register").post(
       maxCount: 1
     }
   ]),
-  registerUser
+  initiateRegistration
 )
+
+router.route("/verify-registration").post(verifyOtpAndRegister)
 
 router.route("/login").post(loginUser);
 
