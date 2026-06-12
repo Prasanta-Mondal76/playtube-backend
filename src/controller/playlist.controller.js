@@ -151,7 +151,7 @@ const getPlaylistById = asyncHandler(async (req, res) => {
       _id: playlistId,
       owner: req.user._id
     }
-  )
+  ).populate("videos")
   if (!playlist) throw new ApiError(404, "Playlist not found or unauthorized.")
 
   return res.status(200).json(new ApiResponse(200, playlist, "Playlist found successfully."))

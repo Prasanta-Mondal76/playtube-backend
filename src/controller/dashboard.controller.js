@@ -5,18 +5,10 @@ import { User } from "../models/user.model.js";
 
 const getChannelStats = asyncHandler(async (req, res) => {
   // TODO: Get the channel stats like total video views, total subscribers, total videos, total likes etc.
-  const { channelId } = req.params;
 
-  if (!isValidObjectId(channelId)) throw new ApiError(400, "Invalid channel ID.")
+  if(!req.user?._id) throw new ApiError(403, "Forbidden")
 
-  const isOwner = req.user?._id?.equals(channelId)
-
-  const channelDetails = await User.findById(channelId)
-    .select(
-      isOwner
-        ? "-password -refreshToken -forgotPasswordToken -forgotPasswordExpiry"
-        : "-password -refreshToken -forgotPasswordToken -forgotPasswordExpiry -watchHistory -totalVideos"
-    )
+  const channelDetails = await User.findById( req.user._id ).select( "-password -refreshToken -watchHistory" )
 
   if (!channelDetails) throw new ApiError(404, "Channel not found.")
 
@@ -29,17 +21,10 @@ const getChannelStats = asyncHandler(async (req, res) => {
 
 const getChannelVideos = asyncHandler(async (req, res) => {
   // TODO: Get all the videos uploaded by the channel
-  const { channelId } = req.params
+  
+  if(!req.user?._id) throw new ApiError(403, "Forbidden")
 
-  if (!isValidObjectId(channelId)) throw new ApiError(400, "Invalid channel ID.")
-
-  const isOwner = req.user?._id?.equals(channelId)
-
-  const channelVideos = await Video.find(
-    isOwner
-      ? { owner: channelId }
-      : { owner: channelId, isPublished: true }
-  ).sort({ createdAt: -1 }).lean()
+  const channelVideos = await Video.find({ owner: req.user._id }).sort({ createdAt: -1 }).lean()
 
   return res.status(200).json(new ApiResponse(
     200,
@@ -50,5 +35,5 @@ const getChannelVideos = asyncHandler(async (req, res) => {
 
 export {
   getChannelStats,
-  getChannelVideos
+  getChannelVideos,
 }

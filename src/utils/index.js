@@ -41,3 +41,6 @@ export {
 
   cleanupTempFiles,
 }
+
+export { verifyToken } from "./verifyToken.js"
+export { syncLikesToMongoDB } from "./likeSync.corn.js"

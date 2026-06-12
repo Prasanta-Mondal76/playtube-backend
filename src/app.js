@@ -30,6 +30,7 @@ import likeRouter from "./routes/like.routes.js"
 import subscriptionRouter from "./routes/subscription.routes.js"
 import dashboardRouter from "./routes/dashboard.routes.js"
 import healthCheckRouter from "./routes/healthCheck.routes.js"
+import historyRouter from "./routes/watchHistory.routes.js"
 // Redis code run
 import redis from "./db/redis.js"
 
@@ -59,25 +60,45 @@ app.use("/api/v1/dashboard", dashboardRouter);
 // Router declaration for HealthCheck route
 app.use("/api/v1/healthCheck", healthCheckRouter);
 
+// Router declaration for Watch history route
+app.use("/api/v1/history", historyRouter);
+
 
 
 
 // Periodic update using node-corn 
 import cron from "node-cron"
-import { syncViewsToMongoDB, cleanupTempFiles } from "./utils/index.js"
+import { syncViewsToMongoDB, cleanupTempFiles, syncLikesToMongoDB } from "./utils/index.js"
 
 // Views Sync
-cron.schedule("*/90 * * * *", async () => {
+cron.schedule("*/1 * * * *", async () => {
 
   console.log("Running views sync cron...")
 
   await syncViewsToMongoDB()
+  await syncLikesToMongoDB()
 })
 
 // 
-cron.schedule("*/30 * * * *", async () => {
+cron.schedule("*/90 * * * *", async () => {
   cleanupTempFiles()
   console.log("Temp Clean Up")
 })
 
+
+
+// Global middleware for handling and formatting all server errors.
+// Any error thrown inside controllers/middlewares is caught here and converted into a consistent JSON response for the frontend.
+app.use((err, req, res, next) => {
+
+  return res
+    .status(err.statusCode || 500)
+    .json({
+      success: false,
+      message: err.message || "Internal Server Error",
+      errors: err.errors || [],
+      data: null
+    })
+
+})
 export default app;

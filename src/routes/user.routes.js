@@ -1,22 +1,26 @@
 import { Router } from "express";
 import {
-initiateRegistration,
-verifyOtpAndRegister,
-loginUser,
-logoutUser,
-renewAccessRefreshToken,
-changeCurrentPassword,
-getCurrentUser,
-updateData,
-updateAvatar,
-updateCoverImage,
-getOtherChannelDetails,
-getWatchHistory,
-forgotUserPassword,
-resetPassword,
-requestDeleteAccount,
-cancelDeleteAccount,
-confirmDeleteAccount
+  initiateRegistration,
+  verifyOtpAndRegister,
+  loginUser,
+  logoutUser,
+  renewAccessRefreshToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  updateData,
+  initiateEmailChange,
+  verifyEmailChange,
+  updateAvatar,
+  updateCoverImage,
+  getOtherChannelDetails,
+  forgotUserPassword,
+  resetPassword,
+  requestDeleteAccount,
+  cancelDeleteAccount,
+  confirmDeleteAccount,
+  userStats,
+  logoutAllDevices,
+  updateAbout
 } from "../controller/user.controller.js";
 
 import { upload } from "../middlewares/multer.middleware.js"
@@ -55,14 +59,13 @@ router.route("/change-password").post(verifyJWT, changeCurrentPassword)
 
 router.route("/current-user").get(verifyJWT, getCurrentUser)
 router.route("/update-user").patch(verifyJWT, updateData)
-
+router.route("/initiate-email-change").post(verifyJWT, initiateEmailChange)
+router.route("/verify-email-change").post(verifyJWT, verifyEmailChange)
 router.route("/update-avatar").patch(verifyJWT, upload.single("avatar"), updateAvatar)
 router.route("/update-coverImage").patch(verifyJWT, upload.single("coverImage"), updateCoverImage)
 
 // Channel details route
 router.route("/channel/:username").get(verifyJWT, getOtherChannelDetails)
-// Watch History route
-router.route("/history").get(verifyJWT, getWatchHistory)
 
 router.route("/forgot-password").post(forgotUserPassword)
 router.route("/reset-password/:token").post(resetPassword)
@@ -70,6 +73,11 @@ router.route("/reset-password/:token").post(resetPassword)
 // Delete Account Routes
 router.route("/delete-account/request").post(verifyJWT, requestDeleteAccount);
 router.route("/delete-account/confirm/:token").delete(confirmDeleteAccount);
-router.route("/delete-account/cancel/:token").delete(cancelDeleteAccount);   
+router.route("/delete-account/cancel/:token").delete(cancelDeleteAccount);
+
+router.route("/login-stats").get(userStats)
+
+router.route("/logout-all-devices").post(verifyJWT, logoutAllDevices);
+router.route("/update-about").patch(verifyJWT, updateAbout);
 
 export default router;

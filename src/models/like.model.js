@@ -21,14 +21,11 @@ const likeSchema = new mongoose.Schema({
 
 
 // Checking there is only one field
-likeSchema.pre("validate", function (next) {
+likeSchema.pre("validate", function () {
   const targets = [this.video, this.comment].filter(Boolean)
-
   if (targets.length !== 1) {
-    return next(new Error("Like must belong to exactly one: video or comment"))
+    throw new Error("Like must belong to exactly one: video or comment")
   }
-
-  next()
 })
 
 

@@ -26,9 +26,10 @@ import { Like } from "../models/like.model.js";
 import { Playlist } from "../models/playlist.model.js";
 import { Subscription } from "../models/subscription.model.js"
 
-const checkNameAndEmailFormat = (fullName, email) => {
+const checkNameAndEmailFormat = (fullName, email, username) => {
   const trimFullName = fullName?.trim()
   const trimEmail = email?.trim()
+  const trimUsername = username?.trim()?.toLowerCase()
   if (trimFullName) {
     if (trimFullName.split(" ").filter(Boolean).length < 2) {
       throw new ApiError(400, "Please enter full name (first and last name)")
@@ -42,7 +43,12 @@ const checkNameAndEmailFormat = (fullName, email) => {
     if (trimEmail !== trimEmail.toLowerCase()) throw new ApiError(400, "Email must be in lowercase")
 
   }
-  return { trimFullName, trimEmail };
+  if (trimUsername) {
+    // Only allow letters, numbers, underscores — no spaces
+    if (!/^[a-z0-9_]{3,20}$/.test(trimUsername))
+      throw new ApiError(400, "Username must be 3–20 characters: letters, numbers, underscores only.")
+  }
+  return { trimFullName, trimEmail, trimUsername };
 }
 
 const storngPasswordValidation = (pass, len = 6) => {
@@ -96,7 +102,7 @@ const initiateRegistration = asyncHandler(async (req, res) => {
     }
 
     // fullName and email validation
-    const { trimFullName, trimEmail } = checkNameAndEmailFormat(fullName, email);
+    const { trimFullName, trimEmail, trimUsername } = checkNameAndEmailFormat(fullName, email, username);
 
     // Strong Password Validation. Second perameter is the minimum length of the password
     storngPasswordValidation(password, 6);
@@ -104,7 +110,7 @@ const initiateRegistration = asyncHandler(async (req, res) => {
     //Checking User already exists or not
     const isExists = await User.findOne({
       $or: [
-        { username },
+        { trimUsername },
         { email }
       ]
     })
@@ -115,7 +121,7 @@ const initiateRegistration = asyncHandler(async (req, res) => {
     }
 
     const otp = await storeRegistrationData(trimEmail, {
-      username: username.trim().toLowerCase(),
+      username: trimUsername,
       email: trimEmail,
       fullName: trimFullName,
       avatarLocalPath,
@@ -234,18 +240,18 @@ const loginUser = asyncHandler(async (req, res) => {
   // console.log("Login API hit: ", req.body)
 
   // Get data from frontend or req.body
-  const { username, password, email } = req.body
+  const { password, email } = req.body
 
   // Validatiion of data | email or username and passowrd
   // Check username or email field is empty
-  if (!username && !email) throw new ApiError(400, "Username or Email is required.")
+  if (!password && !email) throw new ApiError(400, "Username or Email is required.")
 
   // Check user exist or not by email or username
   // Find user by email or username
   const user = await User.findOne({
-    $or: [{ email }, { username }]
+    email
   })
-  if (!user) throw new ApiError(404, "User does not exixt. Please register first.")
+  if (!user) throw new ApiError(404, "User does not exixt.")
 
   // If user exist then compare password is correct or not | using bcryptjs
   const isMatch = await user.isPasswordCorrect(password);
@@ -390,36 +396,103 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 })
 
 
-// Update fullName & email info
+// Updates fullName and username
 const updateData = asyncHandler(async (req, res) => {
-  const { fullName, email } = req.body;
+  const { fullName, username } = req.body
 
-  if (!(fullName || email)) throw new ApiError(400, "Please provide at least one field to update");
+  const { trimFullName, trimUsername } = checkNameAndEmailFormat(fullName, undefined, username)
+
+  // Build update map — only include fields that were actually provided
+  const updates = {}
+  if (trimFullName) updates.fullName = trimFullName
+  if (trimUsername) updates.username = trimUsername
+
+  if (Object.keys(updates).length === 0)
+    throw new ApiError(400, "Please provide at least one field to update.")
 
   const user = await User.findById(req.user._id).select("-refreshToken -password")
+  if (!user) throw new ApiError(404, "User not found.")
 
-  if (!user) {
-    throw new ApiError(404, "User not found");
+  // Username duplicate check — only if it's actually changing
+  if (trimUsername && trimUsername !== user.username) {
+    const taken = await User.exists({ username: trimUsername, _id: { $ne: req.user._id } })
+    if (taken) throw new ApiError(409, "Username is already taken.")
   }
 
-  const { trimFullName, trimEmail } = await checkNameAndEmailFormat(fullName, email);
-
-  user.fullName = trimFullName ? trimFullName : user.fullName
-  user.email = trimEmail ? trimEmail : user.email
+  Object.assign(user, updates)
   await user.save({ validateBeforeSave: false })
 
+  return res.status(200).json(new ApiResponse(200, user, "Details updated successfully."))
+})
 
-  return res.status(200)
-    .json(new ApiResponse(
-      200,
-      user,
-      "Details Update Successfully."
-    ))
+// Update Email 
+// STEP 1: Validate new email → store in Redis → send OTP
+const initiateEmailChange = asyncHandler(async (req, res) => {
+  const { newEmail } = req.body
+  if (!newEmail) throw new ApiError(400, "New email is required.")
+
+  const { trimEmail } = checkNameAndEmailFormat(undefined, newEmail, undefined)
+
+  // Can't change to the same email
+  if (trimEmail === req.user.email)
+    throw new ApiError(400, "This is already your current email.")
+
+  // Check if email is taken by someone else
+  const taken = await User.exists({ email: trimEmail, _id: { $ne: req.user._id } })
+  if (taken) throw new ApiError(409, "Email is already in use by another account.")
+
+  // Cooldown — prevent OTP spam 
+  const cooldownKey = `email-change:cooldown:${req.user._id}`
+  const onCooldown = await redisClient.exists(cooldownKey)
+  if (onCooldown) throw new ApiError(429, "Please wait 5 minutes before requesting again.")
+  await redisClient.set(cooldownKey, "1", { EX: 299 })
+
+  // Store pending email + OTP in Redis using your existing utility
+  // Key: email-change:<userId>, stores { newEmail, otp hash }
+  const otp = await storeRegistrationData(`email-change:${req.user._id}`, {
+    newEmail: trimEmail,
+  })
+
+  await sendMail({
+    to: trimEmail,                                      // OTP goes to the NEW email — proves they own it
+    subject: "Verify Your New Email — PlayTube",
+    html: otpMail(req.user.fullName, otp),
+  })
+
+  return res.status(200).json(new ApiResponse(
+    200,
+    { email: trimEmail },
+    "OTP sent to your new email. Valid for 5 minutes."
+  ))
+})
+
+
+// STEP 2: Verify OTP → update email in DB
+const verifyEmailChange = asyncHandler(async (req, res) => {
+  const { otp } = req.body
+  if (!otp) throw new ApiError(400, "OTP is required.")
+
+  // verifyOtp fetches from Redis and validates — reusing your existing utility
+  const data = await verifyOtp(`email-change:${req.user._id}`, otp)
+
+  const { newEmail } = data
+
+  // Final duplicate check — edge case: someone else claimed this email between initiate and verify
+  const taken = await User.exists({ email: newEmail, _id: { $ne: req.user._id } })
+  if (taken) throw new ApiError(409, "Email was taken by another account. Please start over.")
+
+  const user = await User.findById(req.user._id).select("-password -refreshToken")
+  if (!user) throw new ApiError(404, "User not found.")
+
+  user.email = newEmail
+  await user.save({ validateBeforeSave: false })
+
+  return res.status(200).json(new ApiResponse(200, user, "Email updated successfully."))
 })
 
 
 // File update utility
-const updateFiles = async (file, id) => {
+const updateFiles = async (file, id, prevUrl) => {
 
   // console.log("File ==> ", file);
 
@@ -431,6 +504,9 @@ const updateFiles = async (file, id) => {
   const uploadedFile = await uploadOnCloudinary(localFilePath)
 
   if (!uploadedFile.url) throw new ApiError(400, "Error in uploading process.")
+  
+  // Delete Previous Image From Cloudinary
+  if(prevUrl) await deleteFromCloudinary(prevUrl)
 
   const user = await User.findById(id).select("-password -refreshToken")
 
@@ -448,7 +524,7 @@ const updateFiles = async (file, id) => {
 // Update Avatar
 const updateAvatar = asyncHandler(async (req, res) => {
   try {
-    const resObj = await updateFiles(req.file, req.user._id);
+    const resObj = await updateFiles(req.file, req.user._id, req.user?.avatar);
 
     res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
   } catch (error) {
@@ -460,7 +536,7 @@ const updateAvatar = asyncHandler(async (req, res) => {
 // Update Covered Image
 const updateCoverImage = asyncHandler(async (req, res) => {
   try {
-    const resObj = await updateFiles(req.file, req.user._id);
+    const resObj = await updateFiles(req.file, req.user._id, req.user?.coverImage);
 
     res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
   } catch (error) {
@@ -471,7 +547,7 @@ const updateCoverImage = asyncHandler(async (req, res) => {
 
 // User channel details 
 const getOtherChannelDetails = asyncHandler(async (req, res) => {
-  console.log("User Channel Req: => ", req.params)
+
   const { username } = req.params;
 
   if (!username) throw new ApiError(404, "Username not found.")
@@ -479,6 +555,9 @@ const getOtherChannelDetails = asyncHandler(async (req, res) => {
   const user = await User.findOne({ username }).select("-password -refreshToken -watchHistory").lean()
 
   if (!user) throw new ApiError(404, "User doesn't exists.")
+
+  const isExists = await Subscription.findOne({ channel: user._id, subscriber: req.user?._id })
+  user.isSubscribed = !!isExists
 
   return res.status(200)
     .json(new ApiResponse(
@@ -488,64 +567,6 @@ const getOtherChannelDetails = asyncHandler(async (req, res) => {
     ))
 })
 
-
-// Watch history function. To find watch hintory uer must be login. And if user login we get the user details in req.user[auth.middleware]
-const getWatchHistory = asyncHandler(async (req, res) => {
-
-  const user = await User.aggregate([
-    {
-      $match: {
-        // Convert req.user._id to ObjectId because MongoDB stores _id as ObjectId, not as a string. But when we write "req.user._id" it gives a string, Not the ObjetId().
-        //For normal case we just send the req.user._id and mongooes internally convert in into ObjectId type. But in aggregation pipeline we need to send the exact format
-        //So, If you simply write  _id : req.user._id; It missmatch the type.
-
-        _id: new mongoose.Types.ObjectId(req.user._id) // This ensures proper matching inside the aggregation pipeline and avoids type mismatch issues. 
-      }
-    },
-    {
-      $lookup: {
-        from: "videos",
-        localField: "watchHistory",
-        foreignField: "_id",
-        as: "watchHistory",
-        // Nested Lookup to find video owner details because this models(User, Video) are interconnected. 
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "owner",
-              foreignField: "_id",
-              as: "owner",
-              pipeline: [
-                {
-                  $project: {
-                    username: 1,
-                    fullName: 1,
-                    avatar: 1
-                  }
-                }
-              ]
-            }
-          },
-          {
-            $addFields: {
-              owner: {
-                $first: "$owner"
-              }
-            }
-          }
-        ]
-      },
-    }
-  ])
-
-  return res.status(200)
-    .json(new ApiResponse(
-      200,
-      user[0].watchHistory,
-      "Watch History Fatched Successfully."
-    ))
-})
 
 
 // PROCESS: Forgot password flow uses two methods: forgotUserPassword and resetPassword.
@@ -847,6 +868,90 @@ const confirmDeleteAccount = asyncHandler(async (req, res) => {
   }
 });
 
+
+const userStats = asyncHandler(async (req, res) => {
+
+  try {
+    const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer", "").trim();
+    if (!token) throw new ApiError(401, "Unauthorized Request.");
+
+    const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+    const user = await User.findById(payload._id).select("-password -refreshToken -watchHistory").lean()
+
+    if (!user) {
+      return res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            loggedIn: false
+          },
+          "User login status fetched."
+        )
+      )
+    }
+
+    return res.status(200).json(new ApiResponse(
+      200,
+      {
+        loggedIn: true,
+        user
+      },
+      "User login status fetched."
+    ))
+  } catch (error) {
+
+    return res.status(200).json(new ApiResponse(
+      200,
+      {
+        loggedIn: false
+      },
+      "User login status fetched."
+    ))
+  }
+})
+
+
+// Logout All Devices: Clears refreshToken from DB so all sessions become invalid, then clears cookies.
+const logoutAllDevices = asyncHandler(async (req, res) => {
+  await User.findByIdAndUpdate(
+    req.user._id,
+    { $unset: { refreshToken: 1 } }
+  );
+
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "Logged out from all devices."));
+});
+
+
+//  Update About: Updates the user's about field.
+const updateAbout = asyncHandler(async (req, res) => {
+  const { about } = req.body;
+
+  if (about === undefined) throw new ApiError(400, "About field is required.");
+
+  const trimAbout = about.trim();
+
+  if (trimAbout.length > 300)
+    throw new ApiError(400, "About must be 300 characters or fewer.");
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { about: trimAbout },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  if (!user) throw new ApiError(404, "User not found.");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "About updated successfully."));
+});
+
+
 export {
   initiateRegistration,
   verifyOtpAndRegister,
@@ -860,12 +965,16 @@ export {
   updateAvatar,
   updateCoverImage,
   getOtherChannelDetails,
-  getWatchHistory,
   forgotUserPassword,
   resetPassword,
 
   //Delete Account
   requestDeleteAccount,
   cancelDeleteAccount,
-  confirmDeleteAccount
+  confirmDeleteAccount,
+  initiateEmailChange,
+  verifyEmailChange,
+  userStats,
+  logoutAllDevices,
+  updateAbout
 };

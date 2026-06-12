@@ -3,6 +3,8 @@ import { Like } from "../models/like.model.js"
 import mongoose, { isValidObjectId } from "mongoose"
 import { Video } from "../models/video.model.js"
 import { Comment } from "../models/comment.model.js"
+import { User } from "../models/user.model.js"
+import redisClient from "../db/redis.js"
 
 const toggleLike = async (modelId, fieldName, userId, model) => {
 
@@ -17,7 +19,7 @@ const toggleLike = async (modelId, fieldName, userId, model) => {
   try {
     session.startTransaction()
 
-    existingDocument = await model.findById(modelId, null, {session})
+    existingDocument = await model.findById(modelId, null, { session })
     if (!existingDocument) throw new ApiError(404, `${fieldName} not found`)
     // Try to delete first
     const deletedLike = await Like.findOneAndDelete({
@@ -47,6 +49,9 @@ const toggleLike = async (modelId, fieldName, userId, model) => {
         }
       )
 
+      // Creating Key for like sync
+      if (fieldName === "video") await redisClient.sAdd("dirty:users", userId.toString())
+        
       await session.commitTransaction()
       return { liked: true, totalLikes: result.likes }
     }
@@ -113,31 +118,59 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
 
 
 const getLikedVideos = asyncHandler(async (req, res) => {
-  if (!req.user?._id) {
-    throw new ApiError(401, "Unauthenticated.")
+  if (!req.user?._id) throw new ApiError(401, "Unauthenticated.")
+
+  let { limit = 20, lastId } = req.query
+  limit = Math.min(parseInt(limit) || 20, 50)
+
+  const filter = { video: { $exists: true, $ne: null }, likedBy: req.user._id }
+
+  if (lastId && mongoose.Types.ObjectId.isValid(lastId)) {
+    filter._id = { $lt: new mongoose.Types.ObjectId(lastId) }
   }
 
-  const page = parseInt(req.query.page) || 1
-  const limit = Math.min(parseInt(req.query.limit) || 20, 50)
-  const skip = (page - 1) * limit
-
-  const likedVideos = await Like.find({
-    video: { $ne: null },
-    likedBy: req.user._id
-  })
-    .populate("video", "title thumbnail views duration")
-    .select("video")
-    .skip(skip)
+  const likedDocs = await Like.find(filter)
+    .sort({ _id: -1 })
     .limit(limit)
-    .sort({ createdAt: -1 })
+    .populate("video", "title thumbnail views duration owner isPublished")
     .lean()
 
-  const videos = likedVideos.map(item => item.video).filter(Boolean)
-  return res.status(200).json(new ApiResponse(200, { page: page, limit: limit, result: videos }, "Liked videos fetched."))
+  const videos = likedDocs.map(item => item.video).filter(Boolean)
+
+  const nextCursor = likedDocs.length === limit
+    ? { lastId: likedDocs[likedDocs.length - 1]._id }
+    : null
+
+  return res.status(200).json(new ApiResponse(200, { videos, nextCursor }, "Liked videos fetched."))
+})
+
+const getLikeStatus = asyncHandler(async (req, res) => {
+  const { videoId, commentId } = req.query
+
+  if (!videoId && !commentId)
+    throw new ApiError(400, "Provide videoId or commentId.")
+
+  // ✅ Validate whichever ID was passed
+  if (videoId && !mongoose.Types.ObjectId.isValid(videoId))
+    throw new ApiError(400, "Invalid video ID.")
+
+  if (commentId && !mongoose.Types.ObjectId.isValid(commentId))
+    throw new ApiError(400, "Invalid comment ID.")
+
+  const filter = { likedBy: req.user._id }
+  if (videoId) filter.video = videoId
+  if (commentId) filter.comment = commentId
+
+  const like = await Like.findOne(filter).lean()
+
+  return res.status(200).json(
+    new ApiResponse(200, { isLiked: !!like }, "Like status fetched.")
+  )
 })
 
 export {
   toggleVideoLike,
   toggleCommentLike,
-  getLikedVideos
+  getLikedVideos,
+  getLikeStatus
 }

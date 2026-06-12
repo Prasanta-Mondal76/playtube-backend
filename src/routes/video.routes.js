@@ -32,12 +32,15 @@ router.route("/publish-video")
   publishAVideo
 )
 
-
+// For Owner
 router.route("/all-videos").get(getAllVideos)
-router.route("/get-video/:videoId").get(verifyJWT, getVideoById)
-router.route("/update-video-details/:videoId").patch(verifyJWT, updateVideoDetails)
+
+// For Public Channels 
+router.route("/user/all-videos/:channelId").get(verifyJWT, getChannelVideos)
+
+router.route("/get-video/:videoId").get( getVideoById )
+router.route("/update-video-details/:videoId").patch(verifyJWT, upload.single("thumbnail"), updateVideoDetails)
 router.route("/delete-video/:videoId").delete(verifyJWT, deleteVideo)
-router.route("/toggle-published/:videoId").patch(verifyJWT, recordVideoView);
+router.route("/toggle-published/:videoId").patch(verifyJWT, togglePublishStatus);
 router.route("/views/:videoId").post(recordVideoView);
-router.route("/user/all-videos").get(verifyJWT, getChannelVideos)
 export default router;

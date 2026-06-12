@@ -31,15 +31,18 @@ const userSchema = new mongoose.Schema({
   coverImage: {
     type: String,
   },
-  watchHistory: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Video"
-    }
-  ],
   password: {
     type: String,
     required: [true, "password is required"]
+  },
+  watchHistoryPaused:{
+    type: Boolean, 
+    default: false
+  },
+  about:{
+    type: String, 
+    default: "",
+    trim: true
   },
   refreshToken: {
     type: String,
