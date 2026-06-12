@@ -71,7 +71,7 @@ import cron from "node-cron"
 import { syncViewsToMongoDB, cleanupTempFiles, syncLikesToMongoDB } from "./utils/index.js"
 
 // Views Sync
-cron.schedule("*/1 * * * *", async () => {
+cron.schedule("*/30 * * * *", async () => {
 
   console.log("Running views sync cron...")
 
