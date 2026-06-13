@@ -709,6 +709,72 @@ const getChannelVideos = asyncHandler(async (req, res) => {
   );
 });
 
+
+const searchVideos = asyncHandler(async (req, res) => {
+  const { q } = req.query;
+
+  if (!q || !q.trim()) {
+    throw new ApiError(400, "Search query is required.");
+  }
+
+  const query = q.trim();
+
+  // Fetch all published videos with owner info
+  const videos = await Video.aggregate([
+    { $match: { isPublished: true } },
+    {
+      $lookup: {
+        from: "users",
+        let: { ownerId: "$owner" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$_id", "$$ownerId"] } } },
+          { $project: { avatar: 1, username: 1, fullName: 1 } }
+        ],
+        as: "owner"
+      }
+    },
+    { $unwind: "$owner" }
+  ]);
+
+  // Score each video
+  const scored = videos.map((video) => {
+    const titleLower = (video.title || "").toLowerCase();
+    const descLower = (video.description || "").toLowerCase();
+
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+    let score = 0;
+
+    // Exact phrase match
+    if (titleLower.includes(query.toLowerCase())) score += 100;
+    if (descLower.includes(query.toLowerCase())) score += 40;
+
+    // Individual word matches
+    for (const word of words) {
+      if (titleLower.includes(word)) score += 10;
+      if (descLower.includes(word)) score += 3;
+
+      // Bonus for title/description STARTING with the search word
+      if (titleLower.startsWith(word)) score += 50;
+      if (descLower.startsWith(word)) score += 15;
+
+      // Bonus if any word in the title starts with search term
+      const titleWords = titleLower.split(/\s+/);
+      if (titleWords.some(w => w.startsWith(word))) score += 20;
+    }
+    return { ...video, _searchScore: score };
+  });
+
+  // Only return videos with at least one match, sorted by score
+  const results = scored
+    .filter((v) => v._searchScore > 0)
+    .sort((a, b) => b._searchScore - a._searchScore);
+
+  return res.status(200).json(
+    new ApiResponse(200, { videos: results }, `${results.length} results found.`)
+  );
+});
+
 export {
   publishAVideo,
   getAllVideos,
@@ -717,5 +783,6 @@ export {
   deleteVideo,
   getVideoById,
   recordVideoView,
-  getChannelVideos
+  getChannelVideos,
+  searchVideos
 }

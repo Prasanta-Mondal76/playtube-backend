@@ -11,6 +11,7 @@ import
   getVideoById,
   recordVideoView,
   getChannelVideos,
+  searchVideos,
 } from "../controller/video.controller.js"
 import { upload } from "../middlewares/multer.middleware.js";
 
@@ -43,4 +44,6 @@ router.route("/update-video-details/:videoId").patch(verifyJWT, upload.single("t
 router.route("/delete-video/:videoId").delete(verifyJWT, deleteVideo)
 router.route("/toggle-published/:videoId").patch(verifyJWT, togglePublishStatus);
 router.route("/views/:videoId").post(recordVideoView);
+
+router.route("/search").get(searchVideos)
 export default router;
