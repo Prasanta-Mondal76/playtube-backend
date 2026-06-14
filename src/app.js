@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 const app = express();
 // CORS error handel. 'use' is middleware, used for checking connection or configuration purpose
 app.use(cors({
-  origin: process.env.CORS_ORIGINE,
+  origin: process.env.CORS_ORIGIN,
   credentials: true,
 }))
 // JSON request handel
@@ -31,6 +31,8 @@ import subscriptionRouter from "./routes/subscription.routes.js"
 import dashboardRouter from "./routes/dashboard.routes.js"
 import healthCheckRouter from "./routes/healthCheck.routes.js"
 import historyRouter from "./routes/watchHistory.routes.js"
+import messageRouter from "./routes/message.routes.js"
+import blockRouter from "./routes/block.routes.js"
 // Redis code run
 import redis from "./db/redis.js"
 
@@ -63,7 +65,9 @@ app.use("/api/v1/healthCheck", healthCheckRouter);
 // Router declaration for Watch history route
 app.use("/api/v1/history", historyRouter);
 
-
+// Router declaration for message route
+app.use("/api/v1/messages", messageRouter)
+app.use("/api/v1/blocks", blockRouter);
 
 
 // Periodic update using node-corn 
