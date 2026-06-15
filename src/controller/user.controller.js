@@ -25,6 +25,10 @@ import { Comment } from "../models/comment.model.js";
 import { Like } from "../models/like.model.js";
 import { Playlist } from "../models/playlist.model.js";
 import { Subscription } from "../models/subscription.model.js"
+import { Message } from "../models/message.model.js";
+import { Conversation } from "../models/conversation.model.js";
+import { ChatRequest } from "../models/chatRequest.model.js";
+import { Block } from "../models/block.model.js";
 
 const checkNameAndEmailFormat = (fullName, email, username) => {
   const trimFullName = fullName?.trim()
@@ -504,9 +508,9 @@ const updateFiles = async (file, id, prevUrl) => {
   const uploadedFile = await uploadOnCloudinary(localFilePath)
 
   if (!uploadedFile.url) throw new ApiError(400, "Error in uploading process.")
-  
+
   // Delete Previous Image From Cloudinary
-  if(prevUrl) await deleteFromCloudinary(prevUrl)
+  if (prevUrl) await deleteFromCloudinary(prevUrl)
 
   const user = await User.findById(id).select("-password -refreshToken")
 
@@ -808,6 +812,18 @@ const confirmDeleteAccount = asyncHandler(async (req, res) => {
 
       // 9. Delete all subscribers of user.
       Subscription.deleteMany({ channel: userId }, { session }),
+
+      // 10. Delete all messages sent or received by user
+      Message.deleteMany({ $or: [{ sender: userId }, { receiver: userId }], }, { session }),
+
+      // 11. Delete all conversations user was part of
+      Conversation.deleteMany({ $or: [{ sender: userId }, { receiver: userId }], }, { session }),
+
+      // 12. Delete all chat requests sent or received
+      ChatRequest.deleteMany({ $or: [{ sender: userId }, { receiver: userId }], }, { session }),
+
+      // 13. Delete all block records
+      Block.deleteMany({ $or: [{ blocker: userId }, { blocked: userId }], }, { session }),
     ]);
 
     await session.commitTransaction();
