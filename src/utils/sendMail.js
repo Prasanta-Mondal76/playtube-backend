@@ -1,4 +1,4 @@
-import brevo from "@getbrevo/brevo";
+import * as brevo from "@getbrevo/brevo";
 import { ApiError } from "./apiError.js";
 
 const apiInstance = new brevo.TransactionalEmailsApi();
