@@ -1,50 +1,39 @@
-import * as brevo from "@getbrevo/brevo";
 import { ApiError } from "./apiError.js";
-
-const apiInstance = new brevo.TransactionalEmailsApi();
-
-apiInstance.setApiKey(
-  brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
 
 export const sendMail = async ({ to, subject, html }) => {
   try {
-    console.log("========== BREVO MAIL DEBUG START ==========");
-    console.log("To:", to);
-    console.log("Subject:", subject);
-    console.log("BREVO_API_KEY exists:", !!process.env.BREVO_API_KEY);
-
-    const sendSmtpEmail = {
-      sender: {
-        name: "PlayTube",
-        email: "noreply@playtube.com",
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": process.env.BREVO_API_KEY,
       },
-      to: [
-        {
-          email: to,
+      body: JSON.stringify({
+        sender: {
+          name: "PlayTube",
+          email: process.env.BREVO_SENDER_EMAIL, // verified sender
         },
-      ],
-      subject,
-      htmlContent: html,
-    };
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+    });
 
-    const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    const data = await response.json().catch(() => ({}));
 
-    console.log("Email sent successfully");
-    console.log("Response:", response);
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        data.message || "Brevo email send failed"
+      );
+    }
 
-    console.log("========== BREVO MAIL DEBUG END ==========");
-
-    return response;
+    return data;
   } catch (error) {
-    console.error("========== BREVO MAIL ERROR ==========");
-    console.error(error);
-    console.error("========== BREVO MAIL ERROR END ==========");
-
     throw new ApiError(
-      500,
-      error?.response?.body?.message || error.message
+      error.statusCode || 500,
+      error.message || "Brevo email send failed"
     );
   }
 };
