@@ -81,8 +81,6 @@ import { syncViewsToMongoDB, cleanupTempFiles, syncLikesToMongoDB } from "./util
 // Views Sync
 cron.schedule("*/30 * * * *", async () => {
 
-  console.log("Running views sync cron...")
-
   await syncViewsToMongoDB()
   await syncLikesToMongoDB()
 })
@@ -90,7 +88,6 @@ cron.schedule("*/30 * * * *", async () => {
 // 
 cron.schedule("*/90 * * * *", async () => {
   cleanupTempFiles()
-  console.log("Temp Clean Up")
 })
 
 

@@ -10,7 +10,6 @@ export const syncLikesToMongoDB = async () => {
     const dirtyUsers = await redisClient.sMembers("dirty:users")
 
     if (!dirtyUsers.length) {
-      console.log("Running Like LENGTH 0 ")
       return
     }
 
@@ -48,8 +47,6 @@ export const syncLikesToMongoDB = async () => {
       // Remove dirty flag
       await redisClient.sRem("dirty:users", userId)
     }
-
-    console.log("Likes synced successfully")
 
   } catch (error) {
 

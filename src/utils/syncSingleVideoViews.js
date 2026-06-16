@@ -45,9 +45,6 @@ export const syncAVideoViewsToMongoDB = async (videoId) => {
     // Remove dirty flag
     await redisClient.sRem("dirty:videos", videoId)
 
-
-    console.log("Views synced successfully")
-
   } catch (error) {
     console.log("Views Sync Error:", error.message)
   }
