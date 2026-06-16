@@ -171,8 +171,8 @@ const verifyOtpAndRegister = asyncHandler(async (req, res) => {
       username: registrationData.username,
       email: registrationData.email,
       fullName: registrationData.fullName,
-      avatar: avatarImage.url,
-      coverImage: coverImage?.url || "",
+      avatar: avatarImage.secure_url,
+      coverImage: coverImage?.secure_url || "",
       password: registrationData.password,
     });
 
@@ -197,8 +197,8 @@ const verifyOtpAndRegister = asyncHandler(async (req, res) => {
     );
 
   } catch (error) {
-    if (avatarImage?.url) await deleteFromCloudinary(avatarImage.url);
-    if (coverImage?.url) await deleteFromCloudinary(coverImage.url);
+    if (avatarImage?.secure_url) await deleteFromCloudinary(avatarImage.secure_url);
+    if (coverImage?.secure_url) await deleteFromCloudinary(coverImage.secure_url);
     throw new ApiError(
       error.statusCode || 500,
       error.message || "Something went wrong"
@@ -229,7 +229,7 @@ const generateAccessAndRefreshToken = async (userId) => {
 const options = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "none"
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict"
 }
 
 // Login User
@@ -507,7 +507,7 @@ const updateFiles = async (file, id, prevUrl) => {
 
   const uploadedFile = await uploadOnCloudinary(localFilePath)
 
-  if (!uploadedFile.url) throw new ApiError(400, "Error in uploading process.")
+  if (!uploadedFile.secure_url) throw new ApiError(400, "Error in uploading process.")
 
   // Delete Previous Image From Cloudinary
   if (prevUrl) await deleteFromCloudinary(prevUrl)
@@ -518,7 +518,7 @@ const updateFiles = async (file, id, prevUrl) => {
 
   const oldUrl = user[updateFieldName];
 
-  user[updateFieldName] = uploadedFile.url
+  user[updateFieldName] = uploadedFile.secure_url
   await user.save({ validateBeforeSave: false })
 
   await deleteFromCloudinary(oldUrl);

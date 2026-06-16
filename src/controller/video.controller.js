@@ -65,8 +65,8 @@ const publishAVideo = asyncHandler(async (req, res) => {
     if (duration) duration = formatDuration(duration)
 
     const video = await Video.create({
-      videoFile: videoResponse.url,
-      thumbnail: thumbnailResponse?.url,
+      videoFile: videoResponse.secure_url,
+      thumbnail: thumbnailResponse?.secure_url,
       title: title || autoTitle,
       description,
       duration,
@@ -96,11 +96,11 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
     // Clean Up Cloudinary Files 
     if (videoResponse) {
-      await deleteFromCloudinary(videoResponse.url)
+      await deleteFromCloudinary(videoResponse.secure_url)
         .catch((err) => console.log("Cloudinary video file deletion faild. Error -> ", err))
     }
     if (thumbnailResponse) {
-      await deleteFromCloudinary(thumbnailResponse.url)
+      await deleteFromCloudinary(thumbnailResponse.secure_url)
         .catch((err) => console.log("Cloudinary thumbnail deletion faild. Error -> ", err))
     }
 
@@ -264,7 +264,7 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
   if (req.file?.path) {
     const thumbnailResponse = await uploadOnCloudinary(req.file.path);
 
-    if (!thumbnailResponse?.url) {
+    if (!thumbnailResponse?.secure_url) {
       deleteLocalTempFiles(req);
       throw new ApiError(500, "Thumbnail upload to Cloudinary failed.");
     }
@@ -275,7 +275,7 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
       await deleteFromCloudinary(existingVideo.thumbnail).catch((err) => console.log("Old thumbnail deletion failed:", err));
     }
 
-    updateFields.thumbnail = thumbnailResponse.url;
+    updateFields.thumbnail = thumbnailResponse.secure_url;
   }
 
   if (Object.keys(updateFields).length === 0) {
