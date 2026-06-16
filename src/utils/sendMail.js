@@ -1,59 +1,50 @@
-import nodemailer from "nodemailer";
+import brevo from "@getbrevo/brevo";
 import { ApiError } from "./apiError.js";
+
+const apiInstance = new brevo.TransactionalEmailsApi();
+
+apiInstance.setApiKey(
+  brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
 
 export const sendMail = async ({ to, subject, html }) => {
   try {
-    console.log("========== MAIL DEBUG START ==========");
+    console.log("========== BREVO MAIL DEBUG START ==========");
     console.log("To:", to);
     console.log("Subject:", subject);
-    console.log("EMAIL exists:", !!process.env.EMAIL);
-    console.log("EMAIL_PASS exists:", !!process.env.EMAIL_PASS);
+    console.log("BREVO_API_KEY exists:", !!process.env.BREVO_API_KEY);
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL,
-        pass: process.env.EMAIL_PASS,
+    const sendSmtpEmail = {
+      sender: {
+        name: "PlayTube",
+        email: "noreply@playtube.com",
       },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
-
-    console.log("Transporter created");
-
-    console.log("Verifying SMTP connection...");
-
-    await transporter.verify();
-
-    console.log("SMTP verification successful");
-
-    const mailOptions = {
-      from: process.env.EMAIL,
-      to,
+      to: [
+        {
+          email: to,
+        },
+      ],
       subject,
-      html,
+      htmlContent: html,
     };
 
-    console.log("Sending email...");
-
-    const send = await transporter.sendMail(mailOptions);
+    const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
 
     console.log("Email sent successfully");
-    console.log("Message ID:", send.messageId);
-    console.log("Response:", send.response);
+    console.log("Response:", response);
 
-    console.log("========== MAIL DEBUG END ==========");
+    console.log("========== BREVO MAIL DEBUG END ==========");
 
-    return send;
+    return response;
   } catch (error) {
-    console.error("========== MAIL ERROR ==========");
+    console.error("========== BREVO MAIL ERROR ==========");
     console.error(error);
-    console.error("Message:", error.message);
-    console.error("Code:", error.code);
-    console.error("Command:", error.command);
-    console.error("========== MAIL ERROR END ==========");
+    console.error("========== BREVO MAIL ERROR END ==========");
 
-    throw new ApiError(500, error.message);
+    throw new ApiError(
+      500,
+      error?.response?.body?.message || error.message
+    );
   }
 };
