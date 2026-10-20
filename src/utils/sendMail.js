@@ -1,39 +1,30 @@
+import nodemailer from "nodemailer";
 import { ApiError } from "./apiError.js";
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, //Port 587 uses something called STARTTLS — the connection starts normally and then becomes secure. (secure: true is used only with port 465.)
+  auth: {
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_APP_PASSWORD, // 16-digit App Password 
+  },
+});
 
 export const sendMail = async ({ to, subject, html }) => {
   try {
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "api-key": process.env.BREVO_API_KEY,
-      },
-      body: JSON.stringify({
-        sender: {
-          name: "PlayTube",
-          email: process.env.BREVO_SENDER_EMAIL, // verified sender
-        },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html,
-      }),
+    const info = await transporter.sendMail({
+      from: `"PlayTube" <${process.env.MAIL_USER}>`,
+      to,
+      subject,
+      html,
     });
 
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        data.message || "Brevo email send failed"
-      );
-    }
-
-    return data;
+    return info;
   } catch (error) {
     throw new ApiError(
       error.statusCode || 500,
-      error.message || "Brevo email send failed"
+      error.message || "Gmail SMTP email send failed"
     );
   }
 };
