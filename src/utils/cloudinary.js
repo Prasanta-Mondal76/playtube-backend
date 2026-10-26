@@ -1,5 +1,6 @@
 import { v2 as cloudinary } from 'cloudinary';
 import fs from "fs"
+import { Transform } from "stream";
 import { ApiError } from './apiError.js';
 
 
@@ -45,6 +46,67 @@ Return: on success, the promise resolves to { result: "ok" }.
 Note: for deleting a video from cloudinary you have to pass 'resource_type'.
 */
 
+// Same as uploadOnCloudinary, but the file is STREAMED to Cloudinary
+// through a byte-counting pipe, so the caller gets a real progress %
+// for the server -> Cloudinary leg. Percent is capped at 99 while bytes
+// are flowing; 100 fires only when Cloudinary confirms the upload.
+const uploadOnCloudinaryWithProgress = (localFilePath, onProgress) => {
+  return new Promise((resolve, reject) => {
+    if (!localFilePath) return resolve(null);
+
+    let totalBytes = 0;
+    try {
+      totalBytes = fs.statSync(localFilePath).size;
+    } catch {
+      totalBytes = 0;
+    }
+
+    let sentBytes = 0;
+    let lastPercent = -1;
+
+    const counter = new Transform({
+      transform(chunk, encoding, callback) {
+        sentBytes += chunk.length;
+        if (totalBytes > 0) {
+          const percent = Math.min(99, Math.floor((sentBytes * 100) / totalBytes));
+          if (percent !== lastPercent) {
+            lastPercent = percent;
+            onProgress?.(percent);
+          }
+        }
+        callback(null, chunk);
+      },
+    });
+
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { resource_type: "auto" },
+      (error, result) => {
+        fs.unlink(localFilePath, () => {});
+        if (error) {
+          return reject(new ApiError(500, `File upload failed. Error: ${error.message}`));
+        }
+        onProgress?.(100);
+        resolve(result);
+      }
+    );
+
+    const readStream = fs.createReadStream(localFilePath);
+    readStream.on("error", (err) => {
+      fs.unlink(localFilePath, () => {});
+      reject(new ApiError(500, `File read failed. Error: ${err.message}`));
+    });
+
+    readStream.pipe(counter).pipe(uploadStream);
+  });
+};
+
+// True only when the URL belongs to OUR Cloudinary cloud.
+// Used to verify direct-upload URLs that the browser sends us,
+// so nobody can save someone else's file URL as their video/image.
+const isOwnCloudinaryUrl = (url) =>
+  typeof url === "string" &&
+  url.startsWith(`https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`);
+
 const deleteFromCloudinary = async (url) => {
   try {
     if(!url) return null;
@@ -58,7 +120,7 @@ const deleteFromCloudinary = async (url) => {
     return error.message;
   }
 }
-export {uploadOnCloudinary, deleteFromCloudinary}
+export {uploadOnCloudinary, uploadOnCloudinaryWithProgress, deleteFromCloudinary, isOwnCloudinaryUrl}
 
 
 

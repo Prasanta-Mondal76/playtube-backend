@@ -61,8 +61,8 @@ router.route("/current-user").get(verifyJWT, getCurrentUser)
 router.route("/update-user").patch(verifyJWT, updateData)
 router.route("/initiate-email-change").post(verifyJWT, initiateEmailChange)
 router.route("/verify-email-change").post(verifyJWT, verifyEmailChange)
-router.route("/update-avatar").patch(verifyJWT, upload.single("avatar"), updateAvatar)
-router.route("/update-coverImage").patch(verifyJWT, upload.single("coverImage"), updateCoverImage)
+router.route("/update-avatar").patch(verifyJWT, updateAvatar)
+router.route("/update-coverImage").patch(verifyJWT, updateCoverImage)
 
 // Channel details route
 router.route("/channel/:username").get(verifyJWT, getOtherChannelDetails)

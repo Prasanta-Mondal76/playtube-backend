@@ -34,6 +34,7 @@ import historyRouter from "./routes/watchHistory.routes.js"
 import messageRouter from "./routes/message.routes.js"
 import blockRouter from "./routes/block.routes.js"
 import paymentRouter from "./routes/payment.routes.js"
+import uploadRouter from "./routes/upload.routes.js"
 
 // Redis code run
 import redis from "./db/redis.js"
@@ -73,6 +74,7 @@ app.use("/api/v1/blocks", blockRouter);
 
 // Router declaration doe Payment Route 
 app.use("/api/v1/payments", paymentRouter);
+app.use("/api/v1/uploads", uploadRouter);
 
 // Periodic update using node-corn 
 import cron from "node-cron"

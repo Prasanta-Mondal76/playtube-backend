@@ -4,6 +4,7 @@ import {
   asyncHandler,
   deleteFromCloudinary,
   uploadOnCloudinary,
+  isOwnCloudinaryUrl,
   sendMail,
   deleteLocalTempFiles,
   registrationSuccessMail,
@@ -495,58 +496,45 @@ const verifyEmailChange = asyncHandler(async (req, res) => {
 })
 
 
-// File update utility
-const updateFiles = async (file, id, prevUrl) => {
+// Image update utility — 1-stage (direct upload) version.
+// The browser has already uploaded the image straight to Cloudinary;
+// here we only store its URL on the user and delete the old image.
+const updateImageByUrl = async (imageUrl, id, fieldName) => {
 
-  // console.log("File ==> ", file);
+  if (!imageUrl) throw new ApiError(400, "Image URL is missing.")
 
-  const localFilePath = file?.path;
-  const updateFieldName = file?.fieldname;
-
-  if (!localFilePath) throw new ApiError(400, "File is missing.")
-
-  const uploadedFile = await uploadOnCloudinary(localFilePath)
-
-  if (!uploadedFile.secure_url) throw new ApiError(400, "Error in uploading process.")
-
-  // Delete Previous Image From Cloudinary
-  if (prevUrl) await deleteFromCloudinary(prevUrl)
+  if (!isOwnCloudinaryUrl(imageUrl)) throw new ApiError(400, "Invalid image URL.")
 
   const user = await User.findById(id).select("-password -refreshToken")
 
-  if (!user) throw new ApiError(400, "User not found in update file Process.")
+  if (!user) throw new ApiError(400, "User not found in update image process.")
 
-  const oldUrl = user[updateFieldName];
+  const oldUrl = user[fieldName];
 
-  user[updateFieldName] = uploadedFile.secure_url
+  user[fieldName] = imageUrl
   await user.save({ validateBeforeSave: false })
 
-  await deleteFromCloudinary(oldUrl);
+  // Delete previous image from Cloudinary
+  if (oldUrl && oldUrl !== imageUrl) {
+    await deleteFromCloudinary(oldUrl)
+      .catch((err) => console.log("Old image deletion failed:", err));
+  }
+
   return user;
 }
 
 // Update Avatar
 const updateAvatar = asyncHandler(async (req, res) => {
-  try {
-    const resObj = await updateFiles(req.file, req.user._id, req.user?.avatar);
+  const resObj = await updateImageByUrl(req.body?.avatarUrl, req.user._id, "avatar");
 
-    res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
-  } catch (error) {
-    deleteLocalTempFiles(req);
-    throw new ApiError(error.statusCode, error.message);
-  }
+  res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
 })
 
 // Update Covered Image
 const updateCoverImage = asyncHandler(async (req, res) => {
-  try {
-    const resObj = await updateFiles(req.file, req.user._id, req.user?.coverImage);
+  const resObj = await updateImageByUrl(req.body?.coverUrl, req.user._id, "coverImage");
 
-    res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
-  } catch (error) {
-    deleteLocalTempFiles(req);
-    throw new ApiError(error.statusCode, error.message);
-  }
+  res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
 })
 
 // User channel details 

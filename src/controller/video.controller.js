@@ -1,6 +1,6 @@
 import {
   ApiError, ApiResponse, asyncHandler,
-  uploadOnCloudinary, deleteLocalTempFiles, deleteFromCloudinary,
+  isOwnCloudinaryUrl, deleteLocalTempFiles, deleteFromCloudinary,
   syncAVideoViewsToMongoDB,
   verifyToken
 } from "../utils/index.js"
@@ -16,30 +16,20 @@ import { Subscription } from "../models/subscription.model.js";
 
 
 const publishAVideo = asyncHandler(async (req, res) => {
-  let videoResponse, thumbnailResponse;
+  const { title, description, isPublished, videoUrl, thumbnailUrl, duration: rawDuration } = req.body || {};
   try {
     const startTime = Date.now()
-    const { title, description, isPublished } = req.body
 
     if (!req.user?._id) throw new ApiError(400, "Please login first.")
-    if (!req.files || !req.files?.videoFile?.length) throw new ApiError(400, "Video Files is required.")
 
-    //Validation of details
-    const autoTitle = req.files.videoFile?.[0]?.originalname || "Untitled";
+    // 1-stage flow: the browser has ALREADY uploaded the files straight
+    // to Cloudinary. This API only receives their URLs and saves them.
+    if (!videoUrl) throw new ApiError(400, "Video file is required.")
+    if (!isOwnCloudinaryUrl(videoUrl)) throw new ApiError(400, "Invalid video URL.")
+    if (thumbnailUrl && !isOwnCloudinaryUrl(thumbnailUrl)) throw new ApiError(400, "Invalid thumbnail URL.")
 
-    const videoPath = req.files.videoFile?.[0]?.path;
-    const thumbnailPath = req.files.thumbnail?.[0]?.path;
-
-    if (!videoPath) {
-      throw new ApiError(400, "Video file is required.")
-    }
-
-    videoResponse = await uploadOnCloudinary(videoPath)
-
-    thumbnailResponse = thumbnailPath ? await uploadOnCloudinary(thumbnailPath) : undefined;
-
-    // Duration In seconds
-    let duration = videoResponse?.duration ? parseInt(videoResponse.duration) : 0;
+    // Duration In seconds (frontend sends it from Cloudinary's response)
+    let duration = rawDuration ? parseInt(rawDuration) : 0;
 
     // Video Duration Formating
     function formatDuration(totalSeconds) {
@@ -65,9 +55,9 @@ const publishAVideo = asyncHandler(async (req, res) => {
     if (duration) duration = formatDuration(duration)
 
     const video = await Video.create({
-      videoFile: videoResponse.secure_url,
-      thumbnail: thumbnailResponse?.secure_url,
-      title: title || autoTitle,
+      videoFile: videoUrl,
+      thumbnail: thumbnailUrl || undefined,
+      title: title || "Untitled",
       description,
       duration,
       views: 0,
@@ -94,18 +84,16 @@ const publishAVideo = asyncHandler(async (req, res) => {
     ))
   } catch (error) {
 
-    // Clean Up Cloudinary Files 
-    if (videoResponse) {
-      await deleteFromCloudinary(videoResponse.secure_url)
+    // Clean Up Cloudinary Files (uploaded directly by the browser)
+    if (videoUrl) {
+      await deleteFromCloudinary(videoUrl)
         .catch((err) => console.log("Cloudinary video file deletion faild. Error -> ", err))
     }
-    if (thumbnailResponse) {
-      await deleteFromCloudinary(thumbnailResponse.secure_url)
+    if (thumbnailUrl) {
+      await deleteFromCloudinary(thumbnailUrl)
         .catch((err) => console.log("Cloudinary thumbnail deletion faild. Error -> ", err))
     }
 
-    // Clean Up Temp Files.
-    deleteLocalTempFiles(req);
     throw error;
   }
 })
@@ -253,20 +241,18 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid Video ID");
   }
 
-  const { title, description } = req.body
+  const { title, description, thumbnailUrl } = req.body
 
   const updateFields = {};
 
   if (title !== undefined && title.trim() !== "") updateFields.title = title.trim();
   if (description !== undefined && description.trim() !== "") updateFields.description = description.trim();
 
-  // Handle thumbnail file upload
-  if (req.file?.path) {
-    const thumbnailResponse = await uploadOnCloudinary(req.file.path);
-
-    if (!thumbnailResponse?.secure_url) {
-      deleteLocalTempFiles(req);
-      throw new ApiError(500, "Thumbnail upload to Cloudinary failed.");
+  // Handle thumbnail — the browser already uploaded it straight to
+  // Cloudinary; we only receive its URL here.
+  if (thumbnailUrl) {
+    if (!isOwnCloudinaryUrl(thumbnailUrl)) {
+      throw new ApiError(400, "Invalid thumbnail URL.");
     }
 
     // Delete old thumbnail from Cloudinary
@@ -275,7 +261,7 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
       await deleteFromCloudinary(existingVideo.thumbnail).catch((err) => console.log("Old thumbnail deletion failed:", err));
     }
 
-    updateFields.thumbnail = thumbnailResponse.secure_url;
+    updateFields.thumbnail = thumbnailUrl;
   }
 
   if (Object.keys(updateFields).length === 0) {

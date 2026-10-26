@@ -13,25 +13,13 @@ import
   getChannelVideos,
   searchVideos,
 } from "../controller/video.controller.js"
-import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router()
 
+// 1-stage flow: files go straight from the browser to Cloudinary,
+// so this route now receives only JSON (URLs + details) — no multer.
 router.route("/publish-video")
-.post( 
-  verifyJWT, 
-  upload.fields([
-    {
-      name: "videoFile",
-      maxCount: 1
-    },
-    {
-      name: "thumbnail",
-      maxCount: 1
-    },
-  ]),
-  publishAVideo
-)
+.post(verifyJWT, publishAVideo)
 
 // For Owner
 router.route("/all-videos").get(getAllVideos)
@@ -40,7 +28,7 @@ router.route("/all-videos").get(getAllVideos)
 router.route("/user/all-videos/:channelId").get(verifyJWT, getChannelVideos)
 
 router.route("/get-video/:videoId").get( getVideoById )
-router.route("/update-video-details/:videoId").patch(verifyJWT, upload.single("thumbnail"), updateVideoDetails)
+router.route("/update-video-details/:videoId").patch(verifyJWT, updateVideoDetails)
 router.route("/delete-video/:videoId").delete(verifyJWT, deleteVideo)
 router.route("/toggle-published/:videoId").patch(verifyJWT, togglePublishStatus);
 router.route("/views/:videoId").post(recordVideoView);
