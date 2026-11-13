@@ -85,17 +85,16 @@ const initiateRegistration = asyncHandler(async (req, res) => {
     const cooldownKey = `reg:cooldown:${email}`
     const cooldownExists = await redisClient.exists(cooldownKey)
     if (cooldownExists) throw new ApiError(429, "Please wait for 5 minute before requesting again");
-    await redisClient.set(cooldownKey, "1", { EX: 299 })
     // console.log("Email: ",email);
     // console.log("Password: ",password);
     // console.log("Avatar: ",avatar);
     // console.log("CoverImage: ",coverImage);
-
+    
     //Validation of details
     if ([fullName, username, password, email].some((item) => !item?.trim())) {
       throw new ApiError(400, "Required fields can't be empty.")
     }
-
+    
     // Checking for images , Checking for avatar
     // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
     // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
@@ -105,13 +104,13 @@ const initiateRegistration = asyncHandler(async (req, res) => {
     if (!avatarLocalPath) {
       throw new ApiError(400, "Avatar image is required.")
     }
-
+    
     // fullName and email validation
     const { trimFullName, trimEmail, trimUsername } = checkNameAndEmailFormat(fullName, email, username);
-
+    
     // Strong Password Validation. Second perameter is the minimum length of the password
     storngPasswordValidation(password, 6);
-
+    
     //Checking User already exists or not
     const isExists = await User.findOne({
       $or: [
@@ -119,12 +118,12 @@ const initiateRegistration = asyncHandler(async (req, res) => {
         { email }
       ]
     })
-
+    
     // If email or username exists remove the files from local storge.
     if (isExists) {
       throw new ApiError(409, "User already exists with this email or username.");
     }
-
+    
     const otp = await storeRegistrationData(trimEmail, {
       username: trimUsername,
       email: trimEmail,
@@ -133,14 +132,15 @@ const initiateRegistration = asyncHandler(async (req, res) => {
       coverImageLocalPath,
       password,
     });
-
+    
     // OTP mail bhejo
     await sendMail({
       to: trimEmail,
       subject: "Verify Your Email — PlayTube",
       html: otpMail(trimFullName, otp),
     });
-
+    
+    await redisClient.set(cooldownKey, "1", { EX: 299 })
     return res.status(200).json(new ApiResponse(
       200,
       { email: trimEmail },
